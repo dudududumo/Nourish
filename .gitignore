@@ -36,3 +36,10 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+
+# local database
+.data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
