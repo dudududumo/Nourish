@@ -1,7 +1,7 @@
-import { getChatGPTUser } from '@/app/chatgpt-auth';
+import { getCurrentUser } from '@/lib/auth';
 import { getAiSettings } from '@/lib/ai-settings';
 
-const COACH_INSTRUCTIONS = `你是“轻养”的专业营养与健康行为教练。你面向一位希望健康减脂、改善身体组成、偏好好吃易做食物和低冲击训练的用户。
+const COACH_INSTRUCTIONS = `你是"轻养"的专业营养与健康行为教练。你面向一位希望健康减脂、改善身体组成、偏好好吃易做食物和低冲击训练的用户。
 
 工作规则：
 1. 每次建议必须分清：用户实测数据、合理推断、仍缺少的信息。不得把体脂秤的生物电阻抗估算当作诊断。
@@ -13,28 +13,35 @@ const COACH_INSTRUCTIONS = `你是“轻养”的专业营养与健康行为教�
 7. 优先采用以下知识库原则：WHO 成人活动建议、CDC 渐进减重原则、体脂秤 BIA 只看标准化条件下的长期趋势、中国居民膳食指南的食物多样与均衡原则。涉及医学判断时明确建议咨询医生，不编造来源。`;
 
 export async function POST(request: Request) {
-  const user = await getChatGPTUser();
-  if (!user) return Response.json({ error: '请先使用 ChatGPT 账号登录。' }, { status: 401 });
-  const settings = await getAiSettings(user.userId);
-  if (!settings) return Response.json({ error: '请先在“营养师 → AI 设置”中配置接口、模型和密钥。' }, { status: 503 });
+  const cookieHeader = request.headers.get('cookie');
+  const user = await getCurrentUser(cookieHeader);
+  if (!user) return Response.json({ error: '请先登录。' }, { status: 401 });
+
+  const settings = await getAiSettings(user.id);
+  if (!settings) return Response.json({ error: '请先在"营养师 → AI 设置"中配置接口、模型和密钥。' }, { status: 503 });
+
   const body = await request.json() as { question?: string; context?: unknown };
   if (!body.question?.trim()) return Response.json({ error: '请输入问题。' }, { status: 400 });
 
-  const response = await fetch(settings.endpoint, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${settings.apiKey}`, 'content-type': 'application/json' },
-    body: JSON.stringify({
-      model: settings.model,
-      messages: [
-        { role: 'system', content: COACH_INSTRUCTIONS },
-        { role: 'user', content: `用户问题：${body.question}\n\n当前个人数据：${JSON.stringify(body.context ?? {})}` },
-      ],
-      temperature: 0.3,
-      max_tokens: 1600,
-    }),
-  });
-  const data = await response.json() as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } };
-  if (!response.ok) return Response.json({ error: data.error?.message ?? 'AI 服务暂时不可用。' }, { status: response.status });
-  const answer = data.choices?.[0]?.message?.content ?? '';
-  return Response.json({ answer });
+  try {
+    const response = await fetch(settings.endpoint, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${settings.apiKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: settings.model,
+        messages: [
+          { role: 'system', content: COACH_INSTRUCTIONS },
+          { role: 'user', content: `用户问题：${body.question}\n\n当前个人数据：${JSON.stringify(body.context ?? {})}` },
+        ],
+        temperature: 0.3,
+        max_tokens: 1600,
+      }),
+    });
+    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } };
+    if (!response.ok) return Response.json({ error: data.error?.message ?? 'AI 服务暂时不可用。' }, { status: response.status });
+    const answer = data.choices?.[0]?.message?.content ?? '';
+    return Response.json({ answer });
+  } catch (e) {
+    return Response.json({ error: '连接 AI 服务失败，请检查网络和配置。' }, { status: 502 });
+  }
 }

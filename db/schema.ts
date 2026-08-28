@@ -1,5 +1,22 @@
 import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
+export const users = sqliteTable('users', {
+  id: text('id').primaryKey(),
+  phone: text('phone').notNull().unique(),
+  passwordHash: text('password_hash').notNull(),
+  nickname: text('nickname'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (table) => [uniqueIndex('idx_users_phone').on(table.phone)]);
+
+export const sessions = sqliteTable('sessions', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  token: text('token').notNull().unique(),
+  expiresAt: text('expires_at').notNull(),
+  createdAt: text('created_at').notNull(),
+}, (table) => [index('idx_sessions_token').on(table.token), index('idx_sessions_user').on(table.userId)]);
+
 export const profiles = sqliteTable('profiles', {
   userId: text('user_id').primaryKey(), biologicalSex: text('biological_sex'), birthDate: text('birth_date'), heightCm: real('height_cm'), goal: text('goal').notNull().default('healthy_recomposition'), healthScreeningJson: text('health_screening_json').notNull().default('{}'), updatedAt: text('updated_at').notNull(),
 });
