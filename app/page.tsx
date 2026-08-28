@@ -10,7 +10,14 @@ import {
   Bell, ChevronDown, ShoppingCart, Zap, Bot,
 } from 'lucide-react';
 
-type Tab = 'today' | 'plan' | 'fridge' | 'body';
+type Tab = 'today' | 'plan' | 'coach' | 'fridge' | 'body';
+
+type ChatMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  time: string;
+};
 type Zone = { id: string; name: string; type: '冷藏' | '冷冻'; capacity: number; used: number; icon: string };
 
 type DishIngredient = { name: string; amount: string; fromFridge?: boolean };
@@ -81,6 +88,10 @@ export default function HomePage() {
   const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>([]);
   const [shoppingLoading, setShoppingLoading] = useState(false);
   const [agentAnalyzing, setAgentAnalyzing] = useState(false);
+  const [agentResult, setAgentResult] = useState<{ success: boolean; count?: number; message?: string } | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
 
   // Check auth status
   useEffect(() => {
@@ -201,6 +212,7 @@ export default function HomePage() {
   async function triggerAgentAnalysis(triggerType: 'body' | 'fridge' | 'both', changes: string) {
     if (agentAnalyzing) return;
     setAgentAnalyzing(true);
+    setAgentResult(null);
     try {
       const res = await fetch('/api/agent/analyze', {
         method: 'POST',
@@ -213,18 +225,102 @@ export default function HomePage() {
           zones,
         }),
       });
+      const data = await res.json();
       if (res.ok) {
         // Reload today data to show new insights
         const todayRes = await fetch('/api/plan/today');
         const todayData2 = await todayRes.json();
         setTodayData(todayData2);
+        setAgentResult({ success: true, count: data.count, message: `AI 发现了 ${data.count} 条新建议，已推送到今日页` });
+      } else {
+        setAgentResult({ success: false, message: data.error || '分析失败，请稍后再试' });
       }
     } catch {
-      // Silent fail - agent analysis is optional
+      setAgentResult({ success: false, message: '网络连接失败，请稍后再试' });
     } finally {
       setAgentAnalyzing(false);
     }
   }
+
+  async function sendChatMessage() {
+    const msg = chatInput.trim();
+    if (!msg || chatLoading) return;
+
+    const now = new Date();
+    const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    const userMsg: ChatMessage = {
+      id: `u-${Date.now()}`,
+      role: 'user',
+      content: msg,
+      time: timeStr,
+    };
+
+    setChatMessages((prev) => [...prev, userMsg]);
+    setChatInput('');
+    setChatLoading(true);
+
+    try {
+      const res = await fetch('/api/coach/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          message: msg,
+          context: {
+            measurements: Object.fromEntries(metrics.map(([key, value, unit]) => [key, `${value}${unit}`])),
+            foods,
+            currentPlan: todayData?.plan,
+          },
+        }),
+      });
+      const data = await res.json();
+      const replyTime = new Date();
+      const replyTimeStr = `${replyTime.getHours().toString().padStart(2, '0')}:${replyTime.getMinutes().toString().padStart(2, '0')}`;
+
+      if (res.ok) {
+        const aiMsg: ChatMessage = {
+          id: `a-${Date.now()}`,
+          role: 'assistant',
+          content: data.reply || '抱歉，我没有理解你的意思。',
+          time: replyTimeStr,
+        };
+        setChatMessages((prev) => [...prev, aiMsg]);
+      } else {
+        const errMsg: ChatMessage = {
+          id: `a-${Date.now()}`,
+          role: 'assistant',
+          content: `😕 ${data.error || '出了点小问题，稍后再试试吧。'}`,
+          time: replyTimeStr,
+        };
+        setChatMessages((prev) => [...prev, errMsg]);
+      }
+    } catch {
+      const errMsg: ChatMessage = {
+        id: `a-${Date.now()}`,
+        role: 'assistant',
+        content: '😕 网络好像不太好，检查一下连接再试试吧。',
+        time: new Date().toTimeString().slice(0, 5),
+      };
+      setChatMessages((prev) => [...prev, errMsg]);
+    } finally {
+      setChatLoading(false);
+    }
+  }
+
+  // Initialize chat with welcome message
+  useEffect(() => {
+    if (tab === 'coach' && chatMessages.length === 0 && user) {
+      const now = new Date();
+      const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+      setChatMessages([
+        {
+          id: 'welcome',
+          role: 'assistant',
+          content: `你好呀～我是你的专属营养师小养 🌿\n\n有什么我可以帮你的？比如：\n• "我想把目标改成增肌"\n• "我不吃香菜，帮我调整一下"\n• "今天中午吃什么比较好？"\n\n我会根据你的身体数据和冰箱库存来给你建议～`,
+          time: timeStr,
+        },
+      ]);
+    }
+  }, [tab, chatMessages.length, user]);
 
   // Load shopping list when sheet opens
   useEffect(() => {
@@ -248,6 +344,7 @@ export default function HomePage() {
   const tabItems: [Tab, string, typeof Home][] = [
     ['today', '今日', Home],
     ['plan', '计划', CalendarRange],
+    ['coach', '营养师', Bot],
     ['fridge', '冰箱', Refrigerator],
     ['body', '身体', Activity],
   ];
@@ -297,6 +394,18 @@ export default function HomePage() {
             onShopping={() => setShoppingOpen(true)}
           />
         )}
+        {tab === 'coach' && (
+          <CoachChatView
+            messages={chatMessages}
+            input={chatInput}
+            setInput={setChatInput}
+            loading={chatLoading}
+            onSend={sendChatMessage}
+            onSettings={() => setAiSettingsOpen(true)}
+            onGenerate={() => { setTab('plan'); void generateWeeklyPlan(); }}
+            hasPlan={todayData?.hasPlan ?? false}
+          />
+        )}
         {tab === 'fridge' && (
           <FridgeView
             zones={zones}
@@ -306,6 +415,7 @@ export default function HomePage() {
             onGenerate={() => { setTab('plan'); void generateWeeklyPlan(); }}
             onAgentAnalyze={() => triggerAgentAnalysis('fridge', '冰箱库存有更新')}
             agentAnalyzing={agentAnalyzing}
+            agentResult={agentResult}
           />
         )}
         {tab === 'body' && (
@@ -313,6 +423,7 @@ export default function HomePage() {
             onGenerate={() => { setTab('plan'); void generateWeeklyPlan(); }}
             onAgentAnalyze={() => triggerAgentAnalysis('body', '身体数据有更新')}
             agentAnalyzing={agentAnalyzing}
+            agentResult={agentResult}
           />
         )}
       </div>
@@ -429,42 +540,83 @@ export default function HomePage() {
                 <p className="text-[13px] text-[var(--secondary-label)]">
                   共 {shoppingItems.length} 项 · 已买 {shoppingItems.filter((i) => i.purchased).length} 项
                 </p>
+                {shoppingItems.some((i) => i.purchased) && (
+                  <button
+                    onClick={() => {
+                      // Quick add all purchased to fridge (simulated for now)
+                      const purchased = shoppingItems.filter((i) => i.purchased);
+                      alert(`已将 ${purchased.length} 项食材添加到冰箱 🎉\n\n（实际入库功能待后端对接，当前为演示）`);
+                    }}
+                    className="text-[12px] font-medium text-[var(--system-green)] flex items-center gap-1"
+                  >
+                    <Plus className="size-3.5" />
+                    全部入冰箱
+                  </button>
+                )}
               </div>
               <div className="bg-[var(--secondary-grouped-background)] rounded-2xl overflow-hidden">
                 {shoppingItems.map((item, i) => (
-                  <button
+                  <div
                     key={item.id}
-                    onClick={() => toggleShoppingItem(item.id!, !item.purchased)}
-                    className={`w-full flex items-center gap-3 px-4 py-3.5 text-left ${
-                      i !== shoppingItems.length - 1 ? 'border-b border-[var(--separator)]' : ''
-                    } press-effect`}
+                    className={`${i !== shoppingItems.length - 1 ? 'border-b border-[var(--separator)]' : ''}`}
                   >
-                    <div className={`size-5 rounded-md border-2 flex items-center justify-center shrink-0 ${
-                      item.purchased
-                        ? 'bg-[var(--system-green)] border-[var(--system-green)]'
-                        : 'border-[var(--system-gray4)]'
-                    }`}>
-                      {item.purchased && (
-                        <svg className="size-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-[15px] font-medium ${item.purchased ? 'text-[var(--tertiary-label)] line-through' : ''}`}>
-                        {item.name}
-                      </p>
-                      <p className="text-[12px] text-[var(--secondary-label)] mt-0.5">
-                        {item.amount}
-                        {item.reason && ` · ${item.reason}`}
-                      </p>
-                    </div>
-                  </button>
+                    <button
+                      onClick={() => toggleShoppingItem(item.id!, !item.purchased)}
+                      className="w-full flex items-center gap-3 px-4 py-3.5 text-left press-effect"
+                    >
+                      <div className={`size-5 rounded-md border-2 flex items-center justify-center shrink-0 ${
+                        item.purchased
+                          ? 'bg-[var(--system-green)] border-[var(--system-green)]'
+                          : 'border-[var(--system-gray4)]'
+                      }`}>
+                        {item.purchased && (
+                          <svg className="size-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-[15px] font-medium ${item.purchased ? 'text-[var(--tertiary-label)] line-through' : ''}`}>
+                          {item.name}
+                        </p>
+                        <p className="text-[12px] text-[var(--secondary-label)] mt-0.5">
+                          {item.amount}
+                          {item.reason && ` · ${item.reason}`}
+                        </p>
+                      </div>
+                      <ChevronRight className="size-4 text-[var(--tertiary-label)] shrink-0" />
+                    </button>
+                    {item.purchased && (
+                      <div className="px-4 pb-3 flex gap-2">
+                        <button
+                          onClick={() => {
+                            const defaultAmt = item.amount;
+                            const actual = prompt(`输入 ${item.name} 的实际购买数量：`, defaultAmt);
+                            if (actual) {
+                              alert(`已将 ${actual} 的 ${item.name} 添加到冰箱 🎉\n\n（实际入库功能待后端对接，当前为演示）`);
+                            }
+                          }}
+                          className="flex-1 text-[12px] py-2 rounded-lg bg-[var(--system-green)]/10 text-[var(--system-green)] font-medium press-effect flex items-center justify-center gap-1"
+                        >
+                          <Plus className="size-3.5" />
+                          入冰箱
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
-              <p className="text-[12px] text-[var(--secondary-label)] mt-4 px-1 leading-[18px]">
-                点击食材标记为已采购。采购完成后可以在冰箱页添加到库存，AI 会自动调整后续食谱。
-              </p>
+              <div className="mt-4 space-y-2">
+                <div className="flex gap-2.5 p-3 bg-[var(--system-blue)]/5 border border-[var(--system-blue)]/20 rounded-2xl">
+                  <Info className="size-4 text-[var(--system-blue)] shrink-0 mt-0.5" />
+                  <div className="text-[12px] leading-[18px] text-[var(--secondary-label)]">
+                    <p className="font-medium text-[var(--label)] mb-0.5">采购小贴士</p>
+                    <p>• 在超市：点击打勾快速标记已买</p>
+                    <p>• 回到家：点「入冰箱」确认实际数量后入库</p>
+                    <p>• 买多买少都可以调整，AI 会自动更新后续计划</p>
+                  </div>
+                </div>
+              </div>
             </>
           )}
         </div>
@@ -743,10 +895,11 @@ function TodayView({
 
 /* ==================== Body View ==================== */
 
-function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing }: {
+function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult }: {
   onGenerate: () => void;
   onAgentAnalyze: () => void;
   agentAnalyzing: boolean;
+  agentResult: { success: boolean; count?: number; message?: string } | null;
 }) {
   return (
     <div className="max-w-2xl mx-auto px-4 pb-6">
@@ -773,6 +926,24 @@ function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing }: {
         </button>
       </div>
 
+      {/* AI Analysis Result */}
+      {agentResult && (
+        <div className={`mb-4 rounded-2xl p-3 flex items-start gap-3 ${
+          agentResult.success
+            ? 'bg-[var(--system-green)]/10 border border-[var(--system-green)]/20'
+            : 'bg-[var(--system-orange)]/10 border border-[var(--system-orange)]/20'
+        }`}>
+          {agentResult.success ? (
+            <Sparkles className="size-5 text-[var(--system-green)] shrink-0 mt-0.5" />
+          ) : (
+            <AlertCircle className="size-5 text-[var(--system-orange)] shrink-0 mt-0.5" />
+          )}
+          <p className="text-[12px] leading-[18px] text-[var(--secondary-label)]">
+            {agentResult.message}
+          </p>
+        </div>
+      )}
+
       {/* AI Agent Status */}
       <div className="mb-5 bg-[var(--system-blue)]/5 border border-[var(--system-blue)]/20 rounded-2xl p-3 flex items-center gap-3">
         <div className="relative">
@@ -780,7 +951,7 @@ function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing }: {
           <span className="absolute -top-0.5 -right-0.5 size-2 bg-[var(--system-green)] rounded-full animate-pulse" />
         </div>
         <p className="text-[12px] text-[var(--secondary-label)] leading-[18px]">
-          AI 营养师正在监控你的身体变化。体重或体脂波动时，会主动调整饮食建议。
+          AI 营养师 Agent 模式：主动监控身体变化，体重波动时自动调整饮食建议。
         </p>
       </div>
 
@@ -842,7 +1013,7 @@ function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing }: {
 /* ==================== Fridge View ==================== */
 
 function FridgeView({
-  zones, fridgeOpen, setFridgeOpen, onSettings, onGenerate, onAgentAnalyze, agentAnalyzing,
+  zones, fridgeOpen, setFridgeOpen, onSettings, onGenerate, onAgentAnalyze, agentAnalyzing, agentResult,
 }: {
   zones: Zone[];
   fridgeOpen: boolean;
@@ -851,6 +1022,7 @@ function FridgeView({
   onGenerate: () => void;
   onAgentAnalyze: () => void;
   agentAnalyzing: boolean;
+  agentResult: { success: boolean; count?: number; message?: string } | null;
 }) {
   const total = useMemo(() => zones.reduce((s, z) => s + z.capacity, 0), [zones]);
   const used = useMemo(() => zones.reduce((s, z) => s + z.used, 0), [zones]);
@@ -976,6 +1148,24 @@ function FridgeView({
         </button>
       </div>
 
+      {/* AI Analysis Result */}
+      {agentResult && (
+        <div className={`mt-4 rounded-2xl p-3 flex items-start gap-3 ${
+          agentResult.success
+            ? 'bg-[var(--system-green)]/10 border border-[var(--system-green)]/20'
+            : 'bg-[var(--system-orange)]/10 border border-[var(--system-orange)]/20'
+        }`}>
+          {agentResult.success ? (
+            <Sparkles className="size-5 text-[var(--system-green)] shrink-0 mt-0.5" />
+          ) : (
+            <AlertCircle className="size-5 text-[var(--system-orange)] shrink-0 mt-0.5" />
+          )}
+          <p className="text-[12px] leading-[18px] text-[var(--secondary-label)]">
+            {agentResult.message}
+          </p>
+        </div>
+      )}
+
       {/* AI Agent Status */}
       <div className="mt-4 bg-[var(--system-blue)]/5 border border-[var(--system-blue)]/20 rounded-2xl p-3 flex items-center gap-3">
         <div className="relative">
@@ -983,7 +1173,7 @@ function FridgeView({
           <span className="absolute -top-0.5 -right-0.5 size-2 bg-[var(--system-green)] rounded-full animate-pulse" />
         </div>
         <p className="text-[12px] text-[var(--secondary-label)] leading-[18px]">
-          AI 营养师正在监控你的冰箱变化。新增食材或临期时，会主动给出食谱调整建议。
+          AI 营养师 Agent 模式：主动监控冰箱变化，临期食材优先消耗。
         </p>
       </div>
     </div>
@@ -1262,6 +1452,163 @@ function PlanView({
             </p>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ==================== Coach Chat View ==================== */
+
+function CoachChatView({
+  messages, input, setInput, loading, onSend, onSettings, onGenerate, hasPlan,
+}: {
+  messages: ChatMessage[];
+  input: string;
+  setInput: (v: string) => void;
+  loading: boolean;
+  onSend: () => void;
+  onSettings: () => void;
+  onGenerate: () => void;
+  hasPlan: boolean;
+}) {
+  const quickPrompts = [
+    '我想改成增肌目标',
+    '我不吃香菜',
+    '今天中午吃什么好',
+    '帮我看看这周计划',
+  ];
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      onSend();
+    }
+  }
+
+  return (
+    <div className="flex flex-col h-[calc(100vh-83px)] md:h-[calc(100vh-24px)] max-w-2xl mx-auto">
+      {/* Header */}
+      <div className="px-4 pt-2 pb-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <div className="size-10 rounded-full bg-gradient-to-br from-[var(--system-green)] to-[#30B050] flex items-center justify-center">
+              <Bot className="size-5 text-white" />
+            </div>
+            <span className="absolute -bottom-0.5 -right-0.5 size-3 bg-[var(--system-green)] rounded-full border-2 border-[var(--grouped-background)]" />
+          </div>
+          <div>
+            <h1 className="text-[17px] font-semibold">小养营养师</h1>
+            <p className="text-[11px] text-[var(--system-green)]">在线 · AI 驱动</p>
+          </div>
+        </div>
+        <button
+          onClick={onSettings}
+          className="size-9 rounded-full bg-[var(--system-gray5)] flex items-center justify-center press-effect"
+        >
+          <Settings className="size-4" />
+        </button>
+      </div>
+
+      {/* Agent Status Banner */}
+      <div className="mx-4 mb-3 bg-[var(--system-blue)]/5 border border-[var(--system-blue)]/20 rounded-xl p-2.5 flex items-center gap-2">
+        <Zap className="size-4 text-[var(--system-blue)] shrink-0" />
+        <p className="text-[11px] text-[var(--secondary-label)] leading-[16px]">
+          Agent 模式已开启：我会主动关注你的身体和冰箱变化，有问题随时叫我～
+        </p>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-4 pb-3 space-y-3 ios-scroll">
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+          >
+            {msg.role === 'assistant' && (
+              <div className="size-8 rounded-full bg-gradient-to-br from-[var(--system-green)] to-[#30B050] flex items-center justify-center mr-2 shrink-0 mt-0.5">
+                <Bot className="size-4 text-white" />
+              </div>
+            )}
+            <div className={`max-w-[78%] ${msg.role === 'user' ? 'items-end' : 'items-start'} flex flex-col`}>
+              <div
+                className={`px-3.5 py-2.5 rounded-2xl text-[14px] leading-[22px] whitespace-pre-wrap ${
+                  msg.role === 'user'
+                    ? 'bg-[var(--system-green)] text-white rounded-br-md'
+                    : 'bg-[var(--secondary-grouped-background)] text-[var(--label)] rounded-bl-md'
+                }`}
+              >
+                {msg.content}
+              </div>
+              <span className="text-[10px] text-[var(--tertiary-label)] mt-1 mx-1">
+                {msg.time}
+              </span>
+            </div>
+          </div>
+        ))}
+        {loading && (
+          <div className="flex justify-start">
+            <div className="size-8 rounded-full bg-gradient-to-br from-[var(--system-green)] to-[#30B050] flex items-center justify-center mr-2 shrink-0">
+              <Bot className="size-4 text-white" />
+            </div>
+            <div className="bg-[var(--secondary-grouped-background)] rounded-2xl rounded-bl-md px-3.5 py-3">
+              <div className="flex gap-1">
+                <span className="size-2 bg-[var(--system-gray4)] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="size-2 bg-[var(--system-gray4)] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="size-2 bg-[var(--system-gray4)] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Quick Prompts */}
+      {messages.length <= 1 && !loading && (
+        <div className="px-4 pb-2">
+          <p className="text-[11px] text-[var(--tertiary-label)] mb-2 px-1">试试问我：</p>
+          <div className="flex flex-wrap gap-2">
+            {quickPrompts.map((prompt) => (
+              <button
+                key={prompt}
+                onClick={() => { setInput(prompt); }}
+                className="text-[12px] px-3 py-1.5 rounded-full bg-[var(--secondary-grouped-background)] text-[var(--secondary-label)] press-effect"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Input Bar */}
+      <div className="px-4 py-3 border-t border-[var(--separator)] bg-[var(--grouped-background)]">
+        <div className="flex items-end gap-2">
+          <div className="flex-1 bg-[var(--secondary-grouped-background)] rounded-2xl px-3 py-2">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="跟小养说点什么…"
+              rows={1}
+              className="w-full bg-transparent text-[14px] leading-[20px] resize-none outline-none placeholder:text-[var(--tertiary-label)]"
+              style={{ maxHeight: '100px' }}
+            />
+          </div>
+          <button
+            onClick={onSend}
+            disabled={!input.trim() || loading}
+            className="size-10 rounded-full bg-[var(--system-green)] text-white flex items-center justify-center shrink-0 press-effect disabled:opacity-40 disabled:press-effect-none"
+          >
+            <Send className="size-4" />
+          </button>
+        </div>
+        {!hasPlan && (
+          <button
+            onClick={onGenerate}
+            className="mt-2 w-full text-[12px] text-[var(--system-blue)] text-center"
+          >
+            还没有周计划？让小养生成一份 →
+          </button>
+        )}
       </div>
     </div>
   );

@@ -62,7 +62,9 @@ const SYSTEM_PROMPT = `你是"轻养"的专业营养 AI 规划师。你需要根
   ]
 }
 
-只返回 JSON，不要任何其他文字。`;
+只返回 JSON，不要任何其他文字。
+
+重要：你必须只输出一个合法的 JSON 对象，不要用 markdown 代码块包裹，不要有任何前缀或后缀文字，不要有解释。直接从 { 开始，到 } 结束。`;
 
 function extractJson(text: string): any {
   const trimmed = text.trim();
@@ -78,7 +80,7 @@ function extractJson(text: string): any {
   if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
     try { return JSON.parse(trimmed.slice(firstBrace, lastBrace + 1)); } catch { /* fall through */ }
   }
-  throw new Error('无法解析 AI 返回的食谱数据');
+  throw new Error(`无法解析 AI 返回的食谱数据。原始内容前500字：${text.slice(0, 500)}`);
 }
 
 function getMonday(date: Date): string {
@@ -156,7 +158,7 @@ ${JSON.stringify(body.zones || [], null, 2)}
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userPrompt },
         ],
-        temperature: 0.4,
+        temperature: 0.3,
         max_tokens: 8000,
       }),
     });
@@ -166,6 +168,10 @@ ${JSON.stringify(body.zones || [], null, 2)}
 
     const content = data.choices?.[0]?.message?.content ?? '';
     const result = extractJson(content);
+
+    if (!result.plan?.days || !Array.isArray(result.plan.days) || result.plan.days.length === 0) {
+      throw new Error('AI 返回的数据格式不正确：plan.days 不存在或为空数组。');
+    }
 
     const db = getDb();
     const now = new Date().toISOString();
@@ -251,7 +257,14 @@ ${JSON.stringify(body.zones || [], null, 2)}
 
     return Response.json({ planId, weekStart: monday, weekEnd: sunday });
   } catch (e) {
-    return Response.json({ error: e instanceof Error ? e.message : '生成失败，请稍后再试。' }, { status: 502 });
+    const isDev = process.env.NODE_ENV !== 'production';
+    const message = e instanceof Error ? e.message : '生成失败，请稍后再试。';
+    const stack = e instanceof Error ? e.stack : undefined;
+    if (isDev) {
+      console.error('[weekly plan] 生成失败:', message, stack);
+      return Response.json({ error: message, stack }, { status: 502 });
+    }
+    return Response.json({ error: message }, { status: 502 });
   }
 }
 
