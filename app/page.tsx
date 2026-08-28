@@ -138,10 +138,15 @@ export default function HomePage() {
       if (!response.ok) {
         setPlanError(data.error ?? '生成失败，请稍后再试。');
       } else {
+        console.log('[周计划] 生成成功：', data);
         // Reload today data
         const todayRes = await fetch('/api/plan/today');
         const todayData2 = await todayRes.json();
         setTodayData(todayData2);
+        // Reload week data if on plan tab
+        if (tab === 'plan') {
+          void loadWeekData();
+        }
         // Reload shopping list
         void loadShoppingList();
       }

@@ -170,7 +170,8 @@ ${JSON.stringify(body.zones || [], null, 2)}
     const result = extractJson(content);
 
     if (!result.plan?.days || !Array.isArray(result.plan.days) || result.plan.days.length === 0) {
-      throw new Error('AI 返回的数据格式不正确：plan.days 不存在或为空数组。');
+      const resultPreview = JSON.stringify(result).slice(0, 500);
+      throw new Error(`AI 返回的数据格式不正确：plan.days 不存在或为空数组。原始内容前500字：${resultPreview}`);
     }
 
     const db = getDb();
@@ -198,34 +199,57 @@ ${JSON.stringify(body.zones || [], null, 2)}
     const planId = planResult[0].id;
 
     // Insert daily meals
+    // 使用我们自己计算的日期，不依赖 AI 返回的 date / dayOfWeek
     const allMeals: any[] = [];
-    for (const day of result.plan.days) {
+    const aiDays = result.plan.days;
+    for (let i = 0; i < 7; i++) {
+      const day = aiDays[i];
+      if (!day) {
+        console.warn(`[weekly plan] 第 ${i} 天数据缺失，跳过`);
+        continue;
+      }
+      if (!day.meals || !Array.isArray(day.meals)) {
+        console.warn(`[weekly plan] 第 ${i} 天（${days[i].date}）没有 meals 数组，跳过`);
+        continue;
+      }
       for (const meal of day.meals) {
-        for (let i = 0; i < meal.dishes.length; i++) {
-          const dish = meal.dishes[i];
+        // 兼容不同结构：有 dishes 数组就遍历，没有就把 meal 本身当作一道菜
+        let dishes: any[] = [];
+        if (meal.dishes && Array.isArray(meal.dishes) && meal.dishes.length > 0) {
+          dishes = meal.dishes;
+        } else {
+          dishes = [meal];
+        }
+        for (let j = 0; j < dishes.length; j++) {
+          const dish = dishes[j];
+          const dishName = dish.name || dish.dishName || dish.title || '未知菜品';
+          const calories = dish.calories ?? dish.cal ?? 0;
+          const protein = dish.protein ?? dish.proteinG ?? 0;
           allMeals.push({
             planId,
             userId: user.id,
-            date: day.date,
-            dayOfWeek: day.dayOfWeek,
-            mealType: meal.type,
-            dishName: dish.name,
-            calories: dish.calories,
-            protein: dish.protein,
+            date: days[i].date,
+            dayOfWeek: i,
+            mealType: meal.type || 'dinner',
+            dishName,
+            calories,
+            protein,
             ingredientsJson: JSON.stringify(dish.ingredients || []),
             stepsJson: JSON.stringify(dish.steps || []),
-            sortOrder: i,
+            sortOrder: j,
             createdAt: now,
           });
         }
       }
     }
-    if (allMeals.length > 0) {
+    const mealsInserted = allMeals.length;
+    if (mealsInserted > 0) {
       await db.insert(dailyMeals).values(allMeals);
     }
 
     // Insert shopping items
-    if (result.plan.shoppingList?.length > 0) {
+    let shoppingInserted = 0;
+    if (result.plan.shoppingList && Array.isArray(result.plan.shoppingList) && result.plan.shoppingList.length > 0) {
       await db.insert(shoppingItems).values(
         result.plan.shoppingList.map((item: any) => ({
           planId,
@@ -237,10 +261,12 @@ ${JSON.stringify(body.zones || [], null, 2)}
           createdAt: now,
         }))
       );
+      shoppingInserted = result.plan.shoppingList.length;
     }
 
     // Insert AI insights
-    if (result.insights?.length > 0) {
+    let insightsInserted = 0;
+    if (result.insights && Array.isArray(result.insights) && result.insights.length > 0) {
       await db.insert(aiInsights).values(
         result.insights.map((ins: any) => ({
           userId: user.id,
@@ -253,9 +279,10 @@ ${JSON.stringify(body.zones || [], null, 2)}
           createdAt: now,
         }))
       );
+      insightsInserted = result.insights.length;
     }
 
-    return Response.json({ planId, weekStart: monday, weekEnd: sunday });
+    return Response.json({ planId, weekStart: monday, weekEnd: sunday, mealsInserted, shoppingInserted, insightsInserted });
   } catch (e) {
     const isDev = process.env.NODE_ENV !== 'production';
     const message = e instanceof Error ? e.message : '生成失败，请稍后再试。';
