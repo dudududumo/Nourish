@@ -23,3 +23,13 @@ export const plans = sqliteTable('plans', {
 export const coachMessages = sqliteTable('coach_messages', {
   id: integer('id').primaryKey({ autoIncrement: true }), userId: text('user_id').notNull(), role: text('role').notNull(), content: text('content').notNull(), responseId: text('response_id'), createdAt: text('created_at').notNull(),
 }, (table) => [index('idx_coach_messages_user_date').on(table.userId, table.createdAt)]);
+
+export const aiSettings = sqliteTable('ai_settings', {
+  userId: text('user_id').primaryKey(),
+  provider: text('provider').notNull(),
+  endpoint: text('endpoint').notNull(),
+  model: text('model').notNull(),
+  encryptedApiKey: text('encrypted_api_key').notNull(),
+  iv: text('iv').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});

@@ -37,6 +37,12 @@ export default function HomePage() {
   const [tab, setTab] = useState<Tab>('today');
   const [aiOpen, setAiOpen] = useState(false);
   const [fridgeSettings, setFridgeSettings] = useState(false);
+  const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
+  const [aiEndpoint, setAiEndpoint] = useState('https://ark.cn-beijing.volces.com/api/v3/chat/completions');
+  const [aiModel, setAiModel] = useState('deepseek-v4-flash-ga-260731');
+  const [aiKey, setAiKey] = useState('');
+  const [aiSaving, setAiSaving] = useState(false);
+  const [aiSaved, setAiSaved] = useState(false);
   const [zones, setZones] = useState(initialZones);
   const [prompt, setPrompt] = useState('为什么今天这样安排？');
   const [answer, setAnswer] = useState('');
@@ -57,6 +63,14 @@ export default function HomePage() {
     finally { setAsking(false); }
   }
 
+  async function saveAiConfig() {
+    if (!aiKey.trim()) return;
+    setAiSaving(true); setAiSaved(false);
+    const response = await fetch('/api/settings/ai', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ provider: '火山方舟', endpoint: aiEndpoint, model: aiModel, apiKey: aiKey }) });
+    setAiSaving(false);
+    if (response.ok) { setAiKey(''); setAiSaved(true); setTimeout(() => setAiSettingsOpen(false), 800); }
+  }
+
   return (
     <main className="min-h-screen bg-[#f2f2f7] pb-24 text-[#171719] md:pb-8">
       <header className="sticky top-0 z-30 border-b border-black/[.06] bg-white/82 backdrop-blur-2xl">
@@ -70,7 +84,7 @@ export default function HomePage() {
         {tab === 'today' && <TodayView onAsk={askCoach} onBody={() => setTab('body')} />}
         {tab === 'body' && <BodyView onAsk={askCoach} />}
         {tab === 'fridge' && <FridgeView zones={zones} onSettings={() => setFridgeSettings(true)} onAsk={askCoach} />}
-        {tab === 'coach' && <CoachView onAsk={askCoach} />}
+        {tab === 'coach' && <CoachView onAsk={askCoach} onSettings={() => setAiSettingsOpen(true)} />}
       </div>
 
       <BottomNav tab={tab} setTab={setTab} />
@@ -92,6 +106,10 @@ export default function HomePage() {
 
       <Dialog open={fridgeSettings} onOpenChange={setFridgeSettings}>
         <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle className="text-xl">设置冰箱容量与分区</DialogTitle><DialogDescription>容量用升（L）记录。每种食材也会估算占用体积，用于判断采购能否放得下。</DialogDescription></DialogHeader><div className="space-y-3">{zones.map((zone) => <div key={zone.id} className="grid grid-cols-[1fr_90px] items-end gap-3 rounded-2xl bg-[#f2f2f7] p-4"><div><Label>{zone.name}</Label><p className="mt-1 text-xs text-[#777]">{zone.type} · 当前约 {zone.used} L</p></div><div><Label className="mb-2 text-xs">总容量（L）</Label><Input type="number" min="1" value={zone.capacity} onChange={(e) => setZones((all) => all.map((z) => z.id === zone.id ? { ...z, capacity: Number(e.target.value) } : z))} /></div></div>)}</div><Button className="h-11 w-full rounded-xl" onClick={() => setFridgeSettings(false)}><Check />保存容量设置</Button></DialogContent>
+      </Dialog>
+
+      <Dialog open={aiSettingsOpen} onOpenChange={setAiSettingsOpen}>
+        <DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle className="text-xl">AI 服务设置</DialogTitle><DialogDescription>配置只属于你的模型服务。密钥通过 HTTPS 发送，并在服务端加密保存；页面不会再次显示密钥。</DialogDescription></DialogHeader><div className="space-y-4"><div className="space-y-2"><Label>API 接口</Label><Input value={aiEndpoint} onChange={(e) => setAiEndpoint(e.target.value)} /></div><div className="space-y-2"><Label>模型名称</Label><Input value={aiModel} onChange={(e) => setAiModel(e.target.value)} /></div><div className="space-y-2"><Label>API Key</Label><Input type="password" autoComplete="off" value={aiKey} onChange={(e) => setAiKey(e.target.value)} placeholder="输入你的新密钥" /></div><div className="rounded-xl bg-[#fff6e7] p-3 text-xs leading-5 text-[#805d35]">请使用新密钥。曾经发到聊天里的旧密钥应当撤销。</div><Button className="h-11 w-full rounded-xl" disabled={!aiKey.trim() || aiSaving} onClick={() => void saveAiConfig()}>{aiSaved ? <><Check />已安全保存</> : aiSaving ? '正在加密保存…' : '保存并启用 AI 营养师'}</Button></div></DialogContent>
       </Dialog>
     </main>
   );
@@ -123,7 +141,7 @@ function FridgeView({ zones, onSettings, onAsk }: { zones: Zone[]; onSettings: (
   </section>;
 }
 
-function CoachView({ onAsk }: { onAsk: (q: string) => void }) { return <section className="mx-auto max-w-3xl"><div className="ios-card overflow-hidden"><div className="bg-gradient-to-br from-[#174f3c] to-[#2b7b5d] p-6 text-white"><Bot className="size-9" /><h1 className="mt-4 text-3xl font-semibold">随叫随到的营养师</h1><p className="mt-2 max-w-xl text-sm leading-6 text-[#c5ddd3]">它不会只报结论。每次建议都必须说明使用了哪些数据、哪些是估算、为什么调整，以及什么情况下应该停止或改计划。</p></div><div className="grid gap-3 p-5 sm:grid-cols-2">{[['一键生成 3 天计划','结合身体趋势、课表、预算和库存'],['追问每一顿的原因','热量、蛋白质、饱腹感和食材消耗'],['即时替换菜谱','不爱吃、没时间或食材不够时重排'],['训练与恢复建议','普拉提、步行和基础力量渐进安排']].map(([t,d]) => <button key={t} onClick={() => onAsk(`请开始“${t}”，并先告诉我你还缺少哪些必要信息。`)} className="rounded-2xl border bg-[#f7f7f8] p-4 text-left transition hover:border-[#68a489]"><p className="font-medium">{t}</p><p className="mt-1 text-xs leading-5 text-[#777]">{d}</p><ChevronRight className="mt-3 size-4 text-[#1c6b4a]" /></button>)}</div></div><div className="mt-4 ios-card p-5"><h2 className="font-semibold">营养师的安全边界</h2><p className="mt-2 text-sm leading-6 text-[#666]">不诊断疾病、不因一次体脂秤波动大幅调整热量、不把断食作为惩罚。如果静息心率持续偏高、出现头晕心悸、月经异常或其他不适，会优先建议复测和咨询医生。</p></div></section>; }
+function CoachView({ onAsk, onSettings }: { onAsk: (q: string) => void; onSettings: () => void }) { return <section className="mx-auto max-w-3xl"><div className="mb-4 flex justify-end"><Button variant="outline" className="rounded-full" onClick={onSettings}><Settings2 />AI 设置</Button></div><div className="ios-card overflow-hidden"><div className="bg-gradient-to-br from-[#174f3c] to-[#2b7b5d] p-6 text-white"><Bot className="size-9" /><h1 className="mt-4 text-3xl font-semibold">随叫随到的营养师</h1><p className="mt-2 max-w-xl text-sm leading-6 text-[#c5ddd3]">它不会只报结论。每次建议都必须说明使用了哪些数据、哪些是估算、为什么调整，以及什么情况下应该停止或改计划。</p></div><div className="grid gap-3 p-5 sm:grid-cols-2">{[['一键生成 3 天计划','结合身体趋势、课表、预算和库存'],['追问每一顿的原因','热量、蛋白质、饱腹感和食材消耗'],['即时替换菜谱','不爱吃、没时间或食材不够时重排'],['训练与恢复建议','普拉提、步行和基础力量渐进安排']].map(([t,d]) => <button key={t} onClick={() => onAsk(`请开始“${t}”，并先告诉我你还缺少哪些必要信息。`)} className="rounded-2xl border bg-[#f7f7f8] p-4 text-left transition hover:border-[#68a489]"><p className="font-medium">{t}</p><p className="mt-1 text-xs leading-5 text-[#777]">{d}</p><ChevronRight className="mt-3 size-4 text-[#1c6b4a]" /></button>)}</div></div><div className="mt-4 ios-card p-5"><h2 className="font-semibold">营养师的安全边界</h2><p className="mt-2 text-sm leading-6 text-[#666]">不诊断疾病、不因一次体脂秤波动大幅调整热量、不把断食作为惩罚。如果静息心率持续偏高、出现头晕心悸、月经异常或其他不适，会优先建议复测和咨询医生。</p></div></section>; }
 
 function BottomNav({ tab, setTab }: { tab: Tab; setTab: (tab: Tab) => void }) { const items: [Tab,string,typeof Home][] = [['today','今日',Home],['body','身体',Activity],['fridge','冰箱',Refrigerator],['coach','营养师',Bot]]; return <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-black/[.08] bg-white/92 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl md:sticky md:bottom-4 md:mx-auto md:mt-6 md:flex md:w-fit md:rounded-full md:border md:shadow-lg"><div className="mx-auto flex max-w-lg justify-around px-2 py-1.5 md:gap-1">{items.map(([id,label,Icon]) => <button key={id} onClick={() => setTab(id)} className={`flex min-w-[72px] flex-col items-center gap-1 rounded-full px-3 py-1.5 text-[10px] md:flex-row md:text-sm ${tab === id ? 'bg-[#e4f2e9] font-medium text-[#176440]' : 'text-[#777]'}`}><Icon className="size-[19px]" />{label}</button>)}</div></nav>; }
 

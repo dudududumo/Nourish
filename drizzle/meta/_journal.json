@@ -8,6 +8,13 @@
       "when": 1787923239408,
       "tag": "0000_reflective_shinobi_shaw",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1787929794442,
+      "tag": "0001_optimal_goblin_queen",
+      "breakpoints": true
     }
   ]
 }

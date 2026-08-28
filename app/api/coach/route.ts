@@ -1,4 +1,5 @@
 import { getChatGPTUser } from '@/app/chatgpt-auth';
+import { getAiSettings } from '@/lib/ai-settings';
 
 const COACH_INSTRUCTIONS = `你是“轻养”的专业营养与健康行为教练。你面向一位希望健康减脂、改善身体组成、偏好好吃易做食物和低冲击训练的用户。
 
@@ -9,33 +10,31 @@ const COACH_INSTRUCTIONS = `你是“轻养”的专业营养与健康行为教�
 4. 不诊断或替代医生。静息心率持续偏高、头晕心悸、晕厥、胸痛、月经异常或其他警示症状时建议及时复测并寻求医疗帮助。
 5. 菜谱要具体、好吃、宿舍友好，并优先使用临期库存；调整后同步说明冰箱容量和采购影响。
 6. 语气温和、直接、不羞辱，不把饮食或断食当惩罚。回答使用简体中文。
-7. 涉及会变化或医学营养事实时优先通过 web_search 查阅权威一手来源，并简短列出来源链接。`;
+7. 优先采用以下知识库原则：WHO 成人活动建议、CDC 渐进减重原则、体脂秤 BIA 只看标准化条件下的长期趋势、中国居民膳食指南的食物多样与均衡原则。涉及医学判断时明确建议咨询医生，不编造来源。`;
 
 export async function POST(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: '请先使用 ChatGPT 账号登录。' }, { status: 401 });
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return Response.json({ error: 'AI 营养师尚未完成安全连接：需要先配置 OpenAI API 密钥。当前不会用模拟答案代替。' }, { status: 503 });
+  const settings = await getAiSettings(user.userId);
+  if (!settings) return Response.json({ error: '请先在“营养师 → AI 设置”中配置接口、模型和密钥。' }, { status: 503 });
   const body = await request.json() as { question?: string; context?: unknown };
   if (!body.question?.trim()) return Response.json({ error: '请输入问题。' }, { status: 400 });
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
+  const response = await fetch(settings.endpoint, {
     method: 'POST',
-    headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+    headers: { authorization: `Bearer ${settings.apiKey}`, 'content-type': 'application/json' },
     body: JSON.stringify({
-      model: 'gpt-5.6-terra',
-      instructions: COACH_INSTRUCTIONS,
-      input: `用户问题：${body.question}\n\n当前个人数据：${JSON.stringify(body.context ?? {})}`,
-      reasoning: { effort: 'medium' },
-      text: { verbosity: 'medium' },
-      tools: [{ type: 'web_search' }],
-      include: ['web_search_call.action.sources'],
-      max_output_tokens: 1400,
-      safety_identifier: user.userId.slice(0, 64),
+      model: settings.model,
+      messages: [
+        { role: 'system', content: COACH_INSTRUCTIONS },
+        { role: 'user', content: `用户问题：${body.question}\n\n当前个人数据：${JSON.stringify(body.context ?? {})}` },
+      ],
+      temperature: 0.3,
+      max_tokens: 1600,
     }),
   });
-  const data = await response.json() as { output_text?: string; error?: { message?: string }; output?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }> };
+  const data = await response.json() as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } };
   if (!response.ok) return Response.json({ error: data.error?.message ?? 'AI 服务暂时不可用。' }, { status: response.status });
-  const answer = data.output_text ?? data.output?.flatMap((item) => item.content ?? []).filter((item) => item.type === 'output_text').map((item) => item.text).join('\n') ?? '';
+  const answer = data.choices?.[0]?.message?.content ?? '';
   return Response.json({ answer });
 }
