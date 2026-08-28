@@ -171,6 +171,21 @@ export default function HomePage() {
     }
   }
 
+  function handleInsightAction(id: number, action: 'accept' | 'dismiss') {
+    if (action === 'accept') {
+      // 采纳建议：跳转到营养师聊天页，预填调整请求
+      const insight = todayData?.insights.find((i) => i.id === id);
+      markInsightRead(id);
+      setTab('coach');
+      if (insight) {
+        setChatInput(`帮我调整计划：${insight.title}。${insight.content}`);
+      }
+    } else {
+      // 暂不调整：直接标记已读关闭
+      markInsightRead(id);
+    }
+  }
+
   async function saveAiConfig() {
     if (!aiKey.trim()) return;
     setAiSaving(true); setAiSaved(false);
@@ -383,6 +398,7 @@ export default function HomePage() {
             onProfile={() => setProfileOpen(true)}
             onShopping={() => setShoppingOpen(true)}
             onInsightRead={markInsightRead}
+            onInsightAction={handleInsightAction}
           />
         )}
         {tab === 'plan' && (
@@ -670,7 +686,7 @@ export default function HomePage() {
 /* ==================== Today View ==================== */
 
 function TodayView({
-  user, todayData, loading, generating, error, onGenerate, onPlan, onBody, onProfile, onShopping, onInsightRead,
+  user, todayData, loading, generating, error, onGenerate, onPlan, onBody, onProfile, onShopping, onInsightRead, onInsightAction,
 }: {
   user: AuthUser;
   todayData: TodayData | null;
@@ -683,6 +699,7 @@ function TodayView({
   onProfile: () => void;
   onShopping: () => void;
   onInsightRead: (id: number) => void;
+  onInsightAction: (id: number, action: 'accept' | 'dismiss') => void;
 }) {
   const today = new Date();
   const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][today.getDay()];
@@ -776,32 +793,51 @@ function TodayView({
           {/* AI Insights */}
           {todayData.insights.length > 0 && (
             <div className="mb-5 space-y-2">
-              {todayData.insights.slice(0, 3).map((insight) => (
-                <button
-                  key={insight.id}
-                  onClick={() => onInsightRead(insight.id)}
-                  className={`w-full text-left rounded-2xl p-4 flex items-start gap-3 ${
-                    insight.type === 'warning'
-                      ? 'bg-[var(--system-red)]/10 border border-[var(--system-red)]/20'
-                      : insight.type === 'suggestion'
-                        ? 'bg-[var(--system-blue)]/10 border border-[var(--system-blue)]/20'
-                        : 'bg-[var(--secondary-grouped-background)]'
-                  }`}
-                >
-                  {insight.type === 'warning' ? (
-                    <AlertCircle className="size-5 text-[var(--system-red)] shrink-0 mt-0.5" />
-                  ) : insight.type === 'suggestion' ? (
-                    <Sparkles className="size-5 text-[var(--system-blue)] shrink-0 mt-0.5" />
-                  ) : (
-                    <Info className="size-5 text-[var(--system-green)] shrink-0 mt-0.5" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[14px] font-semibold">{insight.title}</p>
-                    <p className="text-[12px] text-[var(--secondary-label)] mt-1 leading-[18px] line-clamp-2">{insight.content}</p>
+              {todayData.insights.slice(0, 3).map((insight) => {
+                const isActionable = insight.type === 'suggestion' || insight.type === 'warning';
+                return (
+                  <div
+                    key={insight.id}
+                    className={`w-full text-left rounded-2xl p-4 ${
+                      insight.type === 'warning'
+                        ? 'bg-[var(--system-red)]/10 border border-[var(--system-red)]/20'
+                        : insight.type === 'suggestion'
+                          ? 'bg-[var(--system-blue)]/10 border border-[var(--system-blue)]/20'
+                          : 'bg-[var(--secondary-grouped-background)]'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      {insight.type === 'warning' ? (
+                        <AlertCircle className="size-5 text-[var(--system-red)] shrink-0 mt-0.5" />
+                      ) : insight.type === 'suggestion' ? (
+                        <Sparkles className="size-5 text-[var(--system-blue)] shrink-0 mt-0.5" />
+                      ) : (
+                        <Info className="size-5 text-[var(--system-green)] shrink-0 mt-0.5" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[14px] font-semibold">{insight.title}</p>
+                        <p className="text-[12px] text-[var(--secondary-label)] mt-1 leading-[18px]">{insight.content}</p>
+                      </div>
+                    </div>
+                    {isActionable && (
+                      <div className="flex gap-2 mt-3 ml-8">
+                        <button
+                          onClick={() => onInsightAction(insight.id, 'accept')}
+                          className="flex-1 py-2 rounded-xl text-[13px] font-medium bg-[var(--system-green)] text-white press-effect"
+                        >
+                          采纳建议
+                        </button>
+                        <button
+                          onClick={() => onInsightAction(insight.id, 'dismiss')}
+                          className="flex-1 py-2 rounded-xl text-[13px] font-medium bg-[var(--system-gray5)] text-[var(--secondary-label)] press-effect"
+                        >
+                          暂不调整
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <ChevronRight className="size-4 text-[var(--tertiary-label)] shrink-0 mt-0.5" />
-                </button>
-              ))}
+                );
+              })}
             </div>
           )}
 

@@ -6,66 +6,36 @@ import { eq, and, desc } from 'drizzle-orm';
 
 const SYSTEM_PROMPT = `你是"轻养"的专业注册营养师，负责为用户制定科学的 7 天健康饮食计划。
 
-【第一原则：营养健康优先】
-- 严格按照用户的身体数据和目标，计算每日所需热量和蛋白质
-- 每餐保证营养均衡：优质蛋白 + 复合碳水 + 膳食纤维 + 健康脂肪
-- 每天蔬菜不少于 500g，蛋白质摄入量按体重 1.6-2.0g/kg 计算
-- 油脂控制，烹饪方式以蒸、煮、煎（少油）为主
-- 菜品多样化，每天不重样，保证微量元素摄入全面
-- 绝对不能因为冰箱里有什么就只吃什么，营养均衡永远是第一位
+【核心原则】
+1. 营养健康第一：严格按身体数据算热量蛋白，每餐优质蛋白+碳水+蔬菜+健康脂肪
+2. 冰箱库存第二：有就优先用，没有就采购，绝不因库存降低营养标准
+3. 每天 3 餐，好吃易做，适合小厨房
 
-【第二原则：冰箱库存辅助】
-- 在满足营养均衡的前提下，优先使用冰箱中已有的食材
-- 临期（3 天内）的食材优先安排消耗，减少浪费
-- 冰箱里没有但食谱需要的食材，全部列入 shoppingList 采购清单
-- fromFridge 字段：冰箱里有的标 true，需要买的标 false
+【输出要求 - 非常重要】
+你必须返回一个合法的 JSON 对象，格式如下：
 
-【其他要求】
-- 每天 3 餐（早/午/晚），每餐 1-2 道菜，好吃易做，适合小厨房
-- 同时生成 3-5 条 AI 洞察（观察/建议/警示）
-
-返回格式：只返回一个 JSON 对象，不要 markdown，不要多余文字，直接从 { 开始到 } 结束。
-
-JSON 结构示例：
 {
-  "plan": {
-    "goal": "健康减脂并提升肌肉量",
-    "targetCalories": 1800,
-    "targetProtein": 95,
-    "rationale": "简短说明为什么这样安排热量和蛋白分配",
-    "days": [
-      {
-        "meals": [
-          {
-            "type": "breakfast",
-            "dishes": [
-              {
-                "name": "菜名",
-                "ingredients": [{ "name": "食材", "amount": "100g", "fromFridge": true }],
-                "calories": 300,
-                "protein": 15,
-                "steps": ["步骤1", "步骤2"]
-              }
-            ]
-          },
-          { "type": "lunch", "dishes": [...] },
-          { "type": "dinner", "dishes": [...] }
-        ]
-      }
-    ],
-    "shoppingList": [
-      { "name": "食材名", "amount": "500g", "reason": "用于本周 3 顿午餐" }
-    ]
-  },
-  "insights": [
-    { "type": "suggestion", "category": "nutrition", "title": "标题", "content": "具体建议", "priority": 2 }
-  ]
+  "goal": "健康减脂增肌",
+  "targetCalories": 1700,
+  "targetProtein": 90,
+  "rationale": "一句话说明",
+  "days": [
+    {
+      "breakfast": [{"name": "菜名", "calories": 300, "protein": 15, "ingredients": "食材1 100g, 食材2 50g"}],
+      "lunch": [{"name": "菜名", "calories": 500, "protein": 30, "ingredients": "..."}],
+      "dinner": [{"name": "菜名", "calories": 450, "protein": 25, "ingredients": "..."}]
+    }
+  ],
+  "shoppingList": [{"name": "食材", "amount": "500g"}],
+  "insights": [{"type": "suggestion", "title": "标题", "content": "内容", "priority": 2}]
 }
 
-注意：
-- type 只能是 breakfast / lunch / dinner / snack
-- days 数组必须有 7 个元素，对应周一到周日
-- 只返回 JSON，不要任何其他内容`;
+规则：
+- 只返回 JSON，不要任何解释、不要 markdown、不要代码块
+- days 数组必须有 7 个对象，对应第1天到第7天
+- 每餐是数组，1-2 道菜
+- ingredients 用逗号分隔的字符串就行，不用数组
+- 直接从 { 开始，到 } 结束`;
 
 function extractJson(text: string): any {
   const trimmed = text.trim();
@@ -84,48 +54,91 @@ function extractJson(text: string): any {
   throw new Error(`无法解析 AI 返回的食谱数据。原始内容前500字：${text.slice(0, 500)}`);
 }
 
+// 从自然语言文本中提取菜品（兜底方案，当 JSON 完全解析失败时使用）
+function parseMealsFromText(text: string): any[] {
+  const days: any[] = [];
+  // 按"第X天"或日期分割
+  const dayRegex = /(?:第\s*(\d+)\s*天|Day\s*\d+|周[一二三四五六日])[^\n]*\n([\s\S]*?)(?=(?:第\s*\d+\s*天|Day\s*\d+|周[一二三四五六日]|$))/gi;
+  let match;
+  while ((match = dayRegex.exec(text)) !== null) {
+    const dayText = match[2];
+    const day: any = { breakfast: [], lunch: [], dinner: [] };
+
+    // 提取早餐
+    const breakfastMatch = dayText.match(/(?:早餐|早饭|早)[：:]([^\n]+)/);
+    if (breakfastMatch) day.breakfast.push({ name: breakfastMatch[1].trim(), calories: 0, protein: 0, ingredients: '' });
+
+    // 提取午餐
+    const lunchMatch = dayText.match(/(?:午餐|午饭|中)[：:]([^\n]+)/);
+    if (lunchMatch) day.lunch.push({ name: lunchMatch[1].trim(), calories: 0, protein: 0, ingredients: '' });
+
+    // 提取晚餐
+    const dinnerMatch = dayText.match(/(?:晚餐|晚饭|晚)[：:]([^\n]+)/);
+    if (dinnerMatch) day.dinner.push({ name: dinnerMatch[1].trim(), calories: 0, protein: 0, ingredients: '' });
+
+    // 只要有一餐就保留
+    if (day.breakfast.length > 0 || day.lunch.length > 0 || day.dinner.length > 0) {
+      days.push(day);
+    }
+  }
+
+  // 如果按天分割没找到，尝试从整体文本提取一顿的（至少当 1 天用）
+  if (days.length === 0) {
+    const day: any = { breakfast: [], lunch: [], dinner: [] };
+    const b = text.match(/(?:早餐|早饭)[：:]([^\n]+)/);
+    const l = text.match(/(?:午餐|午饭)[：:]([^\n]+)/);
+    const d = text.match(/(?:晚餐|晚饭)[：:]([^\n]+)/);
+    if (b) day.breakfast.push({ name: b[1].trim(), calories: 0, protein: 0, ingredients: '' });
+    if (l) day.lunch.push({ name: l[1].trim(), calories: 0, protein: 0, ingredients: '' });
+    if (d) day.dinner.push({ name: d[1].trim(), calories: 0, protein: 0, ingredients: '' });
+    if (day.breakfast.length > 0 || day.lunch.length > 0 || day.dinner.length > 0) {
+      days.push(day);
+    }
+  }
+
+  return days;
+}
+
 // 归一化 AI 返回的各种结构，统一成我们期望的格式
 function normalizePlan(raw: any): {
   plan: { goal: string; targetCalories: number; targetProtein: number; rationale: string; days: any[]; shoppingList: any[] };
   insights: any[];
 } {
-  // 尝试找到 plan 对象（可能叫 plan / weekPlan / mealPlan / data）
+  // 顶层可能直接就是数据，也可能包了一层 plan
   const planObj = raw.plan || raw.weekPlan || raw.mealPlan || raw.data || raw;
-  // 尝试找到 days 数组（可能叫 days / meals / weeklyMeals / schedule）
+
+  // 尝试找到 days 数组
   let days: any[] = [];
   if (Array.isArray(planObj.days)) days = planObj.days;
   else if (Array.isArray(planObj.meals)) days = planObj.meals;
   else if (Array.isArray(planObj.weeklyMeals)) days = planObj.weeklyMeals;
   else if (Array.isArray(planObj.schedule)) days = planObj.schedule;
   else if (Array.isArray(raw.days)) days = raw.days;
-  // 如果还没有，尝试找是否是按 mealType 分组的对象
-  if (days.length === 0 && raw.breakfast) {
-    days = [{ meals: [
-      { type: 'breakfast', dishes: Array.isArray(raw.breakfast) ? raw.breakfast : [raw.breakfast] },
-      { type: 'lunch', dishes: Array.isArray(raw.lunch) ? raw.lunch : [raw.lunch] },
-      { type: 'dinner', dishes: Array.isArray(raw.dinner) ? raw.dinner : [raw.dinner] },
-    ] }];
-  }
 
-  // 归一化每一天的结构
+  // 归一化每一天的结构：统一转成 { breakfast: [], lunch: [], dinner: [] } 形式
   const normalizedDays = days.slice(0, 7).map((day: any) => {
-    // 尝试找到当天的 meals
-    let meals: any[] = [];
-    if (Array.isArray(day.meals)) meals = day.meals;
-    else if (Array.isArray(day.dishes)) meals = [{ type: 'lunch', dishes: day.dishes }];
-    else {
-      // 按 mealType 分组的对象形式
-      const types: Array<[string, string]> = [
-        ['breakfast', '早餐'], ['lunch', '午餐'], ['dinner', '晚餐'], ['snack', '加餐'],
-      ];
-      for (const [type, name] of types) {
-        if (day[type]) {
-          const arr = Array.isArray(day[type]) ? day[type] : [day[type]];
-          meals.push({ type, name, dishes: arr });
-        }
+    const result: any = { breakfast: [], lunch: [], dinner: [], snack: [] };
+
+    // 形式1：直接按 mealType 分组的对象（我们推荐的格式）
+    for (const type of ['breakfast', 'lunch', 'dinner', 'snack']) {
+      if (day[type]) {
+        const arr = Array.isArray(day[type]) ? day[type] : [day[type]];
+        result[type] = arr.map((d: any) => typeof d === 'string' ? { name: d, calories: 0, protein: 0, ingredients: '' } : d);
       }
     }
-    return { ...day, meals };
+
+    // 形式2：meals 数组 + type 字段
+    if (Array.isArray(day.meals) && result.breakfast.length === 0 && result.lunch.length === 0) {
+      for (const meal of day.meals) {
+        const type = meal.type || 'dinner';
+        let dishes: any[] = [];
+        if (Array.isArray(meal.dishes)) dishes = meal.dishes;
+        else if (meal.name) dishes = [meal];
+        if (result[type]) result[type] = [...result[type], ...dishes];
+      }
+    }
+
+    return result;
   });
 
   // 归一化购物清单
@@ -244,17 +257,53 @@ ${JSON.stringify(body.zones || [], null, 2)}
     if (!response.ok) return Response.json({ error: data.error?.message ?? 'AI 服务暂时不可用。' }, { status: response.status });
 
     const content = data.choices?.[0]?.message?.content ?? '';
-    const rawResult = extractJson(content);
-    const result = normalizePlan(rawResult);
 
-    // 放宽校验：有几天算几天，至少要有 1 天的数据
-    if (!result.plan.days || result.plan.days.length === 0) {
-      const rawPreview = JSON.stringify(rawResult).slice(0, 800);
-      const normalizedPreview = JSON.stringify(result).slice(0, 500);
+    // 先尝试 JSON 解析
+    let rawResult: any = null;
+    let parseError = '';
+    try {
+      rawResult = extractJson(content);
+    } catch (e: any) {
+      parseError = e.message;
+      console.warn('[weekly plan] JSON 解析失败，尝试文本兜底解析');
+    }
+
+    let result: any = null;
+    if (rawResult) {
+      result = normalizePlan(rawResult);
+    }
+
+    // 如果 JSON 解析后没有 days，尝试从文本提取（兜底方案）
+    if (!result || !result.plan.days || result.plan.days.length === 0) {
+      console.warn('[weekly plan] 结构归一化后没有数据，使用文本兜底解析');
+      const textDays = parseMealsFromText(content);
+      if (textDays.length > 0) {
+        result = {
+          plan: {
+            goal: '健康饮食计划',
+            targetCalories: 1800,
+            targetProtein: 80,
+            rationale: 'AI 营养师根据你的身体数据和冰箱库存生成的个性化计划。',
+            days: textDays,
+            shoppingList: [],
+          },
+          insights: [{
+            type: 'observation',
+            title: '计划已生成',
+            content: `AI 为你生成了 ${textDays.length} 天的饮食计划，可在周计划中查看详情。`,
+            priority: 1,
+          }],
+        };
+      }
+    }
+
+    // 最后校验：还是没有的话报错
+    if (!result || !result.plan.days || result.plan.days.length === 0) {
+      const contentPreview = content.slice(0, 800);
       throw new Error(
-        `AI 返回的数据格式不正确：没有找到任何天的食谱数据。\n` +
-        `AI 原始结构：${rawPreview}\n` +
-        `归一化后：${normalizedPreview}`
+        `AI 返回的数据无法解析。\n` +
+        `JSON 解析错误：${parseError || '无'}\n` +
+        `AI 返回内容预览：${contentPreview}`
       );
     }
 
@@ -288,43 +337,73 @@ ${JSON.stringify(body.zones || [], null, 2)}
     // Insert daily meals
     // 使用我们自己计算的日期，不依赖 AI 返回的 date / dayOfWeek
     // 有几天算几天，不强制 7 天
+    // 支持两种结构：{breakfast: [], lunch: [], dinner: []} 和 {meals: [{type, dishes: []}]}
     const allMeals: any[] = [];
     const aiDays = result.plan.days;
+    const mealTypes: Array<[string, string]> = [
+      ['breakfast', '早餐'], ['lunch', '午餐'], ['dinner', '晚餐'], ['snack', '加餐'],
+    ];
     for (let i = 0; i < actualDays; i++) {
       const day = aiDays[i];
       if (!day) {
         console.warn(`[weekly plan] 第 ${i} 天数据缺失，跳过`);
         continue;
       }
-      if (!day.meals || !Array.isArray(day.meals)) {
-        console.warn(`[weekly plan] 第 ${i} 天（${days[i].date}）没有 meals 数组，跳过`);
-        continue;
-      }
-      for (const meal of day.meals) {
-        // 兼容不同结构：有 dishes 数组就遍历，没有就把 meal 本身当作一道菜
-        let dishes: any[] = [];
-        if (meal.dishes && Array.isArray(meal.dishes) && meal.dishes.length > 0) {
-          dishes = meal.dishes;
-        } else {
-          dishes = [meal];
+
+      // 收集这天所有菜，按 mealType 分组
+      const dishesByType: Record<string, any[]> = {};
+
+      // 结构1：直接按 mealType 分组（推荐格式）
+      for (const [type] of mealTypes) {
+        if (day[type] && Array.isArray(day[type]) && day[type].length > 0) {
+          dishesByType[type] = day[type];
         }
-        for (let j = 0; j < dishes.length; j++) {
-          const dish = dishes[j];
+      }
+
+      // 结构2：meals 数组形式（兜底）
+      if (Object.keys(dishesByType).length === 0 && Array.isArray(day.meals)) {
+        for (const meal of day.meals) {
+          const type = meal.type || 'dinner';
+          if (meal.dishes && Array.isArray(meal.dishes)) {
+            dishesByType[type] = (dishesByType[type] || []).concat(meal.dishes);
+          } else if (meal.name) {
+            dishesByType[type] = (dishesByType[type] || []).concat([meal]);
+          }
+        }
+      }
+
+      // 写入数据库
+      let sortIdx = 0;
+      for (const [type] of mealTypes) {
+        const dishes = dishesByType[type];
+        if (!dishes || dishes.length === 0) continue;
+        for (const dish of dishes) {
           const dishName = dish.name || dish.dishName || dish.title || '未知菜品';
           const calories = dish.calories ?? dish.cal ?? 0;
           const protein = dish.protein ?? dish.proteinG ?? 0;
+          // ingredients 可能是字符串（逗号分隔）或数组
+          let ingredientsArr: any[] = [];
+          if (typeof dish.ingredients === 'string' && dish.ingredients) {
+            ingredientsArr = dish.ingredients.split(/[,，、]/).map((s: string) => ({
+              name: s.trim(),
+              amount: '',
+              fromFridge: false,
+            })).filter((x: any) => x.name);
+          } else if (Array.isArray(dish.ingredients)) {
+            ingredientsArr = dish.ingredients;
+          }
           allMeals.push({
             planId,
             userId: user.id,
             date: days[i].date,
             dayOfWeek: days[i].dayOfWeek,
-            mealType: meal.type || 'dinner',
+            mealType: type,
             dishName,
             calories,
             protein,
-            ingredientsJson: JSON.stringify(dish.ingredients || []),
+            ingredientsJson: JSON.stringify(ingredientsArr),
             stepsJson: JSON.stringify(dish.steps || []),
-            sortOrder: j,
+            sortOrder: sortIdx++,
             createdAt: now,
           });
         }
