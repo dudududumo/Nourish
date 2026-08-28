@@ -3,25 +3,29 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Home, Activity, Refrigerator, Bot, ChevronRight,
+  Home, CalendarRange, Refrigerator, Activity, ChevronRight,
   Sparkles, TrendingDown, Dumbbell, Archive,
   Flame, Info, Settings, Send, Plus, X,
   LogOut, User, Loader2, AlertCircle,
+  Bell, ChevronDown, ShoppingCart, Zap, Bot,
 } from 'lucide-react';
 
-type Tab = 'today' | 'body' | 'fridge' | 'coach';
+type Tab = 'today' | 'plan' | 'fridge' | 'body';
 type Zone = { id: string; name: string; type: '冷藏' | '冷冻'; capacity: number; used: number; icon: string };
 
 type DishIngredient = { name: string; amount: string; fromFridge?: boolean };
-type Dish = { name: string; ingredients: DishIngredient[]; calories: number; protein: number; steps?: string[] };
-type Meal = { type: 'breakfast' | 'lunch' | 'dinner' | 'snack'; name: string; calories: number; protein: number; dishes: Dish[] };
-type ShoppingItem = { name: string; amount: string; reason: string };
-type MealPlan = {
-  summary: { totalCalories: number; totalProtein: number; rationale: string; missingInfo: string[] };
-  meals: Meal[];
-  shoppingList: ShoppingItem[];
+type Dish = { id?: number; name: string; ingredients: DishIngredient[]; calories: number; protein: number; steps?: string[]; mealType?: string; sortOrder?: number };
+type MealGroup = { breakfast?: Dish[]; lunch?: Dish[]; dinner?: Dish[]; snack?: Dish[] };
+type ShoppingItem = { id?: number; name: string; amount: string; reason?: string; purchased?: boolean };
+type Insight = { id: number; type: 'observation' | 'suggestion' | 'warning'; category?: string; title: string; content: string; priority: number; readAt?: string | null };
+type WeeklyPlan = { id: number; weekStart: string; weekEnd: string; goal?: string; targetCalories?: number; targetProtein?: number; rationale?: string };
+
+type TodayData = {
+  plan: WeeklyPlan | null;
+  today: { date: string; calories: number; protein: number; meals: MealGroup };
+  insights: Insight[];
+  hasPlan: boolean;
 };
-type ChatMessage = { role: 'user' | 'assistant'; content: string; isAdjustment?: boolean };
 
 const metrics = [
   ['体重', '53.4', 'kg', '较上次 +0.3', 'normal'], ['BMI', '20.9', '', '标准', 'normal'],
@@ -64,12 +68,19 @@ export default function HomePage() {
   const [aiSaving, setAiSaving] = useState(false);
   const [aiSaved, setAiSaved] = useState(false);
   const [zones, setZones] = useState(initialZones);
-  const [prompt, setPrompt] = useState('');
-  const [mealPlan, setMealPlan] = useState<MealPlan | null>(null);
-  const [generating, setGenerating] = useState(false);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [aiError, setAiError] = useState('');
   const [fridgeOpen, setFridgeOpen] = useState(false);
+  const [todayData, setTodayData] = useState<TodayData | null>(null);
+  const [todayLoading, setTodayLoading] = useState(true);
+  const [generatingPlan, setGeneratingPlan] = useState(false);
+  const [planError, setPlanError] = useState('');
+  const [selectedDay, setSelectedDay] = useState(0); // 0=Mon
+  const [weeklyData, setWeeklyData] = useState<any>(null);
+  const [weeklyLoading, setWeeklyLoading] = useState(false);
+  const [planOpen, setPlanOpen] = useState(false);
+  const [shoppingOpen, setShoppingOpen] = useState(false);
+  const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>([]);
+  const [shoppingLoading, setShoppingLoading] = useState(false);
+  const [agentAnalyzing, setAgentAnalyzing] = useState(false);
 
   // Check auth status
   useEffect(() => {
@@ -86,11 +97,22 @@ export default function HomePage() {
       .finally(() => setAuthLoading(false));
   }, [router]);
 
-  async function generateMealPlan() {
-    if (generating) return;
-    setGenerating(true); setAiError(''); setMealPlan(null); setChatMessages([]);
+  // Load today's data
+  useEffect(() => {
+    if (!user) return;
+    setTodayLoading(true);
+    fetch('/api/plan/today')
+      .then((r) => r.json())
+      .then((data) => setTodayData(data))
+      .finally(() => setTodayLoading(false));
+  }, [user]);
+
+  async function generateWeeklyPlan() {
+    if (generatingPlan) return;
+    setGeneratingPlan(true); setPlanError('');
+    setWeeklyData(null); // Reset to trigger reload
     try {
-      const response = await fetch('/api/coach/plan', {
+      const response = await fetch('/api/plan/weekly', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -101,53 +123,35 @@ export default function HomePage() {
           constraints: '宿舍环境、小锅、简单易做、好吃不水煮',
         }),
       });
-      const data = await response.json() as { plan?: MealPlan; error?: string };
+      const data = await response.json();
       if (!response.ok) {
-        setAiError(data.error ?? '生成失败，请稍后再试。');
-      } else if (data.plan) {
-        setMealPlan(data.plan);
+        setPlanError(data.error ?? '生成失败，请稍后再试。');
+      } else {
+        // Reload today data
+        const todayRes = await fetch('/api/plan/today');
+        const todayData2 = await todayRes.json();
+        setTodayData(todayData2);
+        // Reload shopping list
+        void loadShoppingList();
       }
     } catch {
-      setAiError('网络连接失败，请稍后再试。');
+      setPlanError('网络连接失败，请稍后再试。');
     } finally {
-      setGenerating(false);
+      setGeneratingPlan(false);
     }
   }
 
-  async function adjustPlan(request: string) {
-    if (!mealPlan || generating || !request.trim()) return;
-    const userMsg: ChatMessage = { role: 'user', content: request };
-    setChatMessages((prev) => [...prev, userMsg]);
-    setPrompt('');
-    setGenerating(true); setAiError('');
-    try {
-      const response = await fetch('/api/coach/plan', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          measurements: Object.fromEntries(metrics.map(([key, value, unit]) => [key, `${value}${unit}`])),
-          zones,
-          foods,
-          goal: '健康减脂并提升肌肉量',
-          constraints: '宿舍环境、小锅、简单易做、好吃不水煮',
-          currentPlan: mealPlan,
-          adjustRequest: request,
-        }),
+  async function markInsightRead(id: number) {
+    await fetch('/api/insights/read', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    if (todayData) {
+      setTodayData({
+        ...todayData,
+        insights: todayData.insights.filter((i) => i.id !== id),
       });
-      const data = await response.json() as { plan?: MealPlan; error?: string };
-      if (!response.ok) {
-        setAiError(data.error ?? '调整失败，请稍后再试。');
-        const assistantMsg: ChatMessage = { role: 'assistant', content: data.error ?? '调整失败，请稍后再试。' };
-        setChatMessages((prev) => [...prev, assistantMsg]);
-      } else if (data.plan) {
-        setMealPlan(data.plan);
-        const assistantMsg: ChatMessage = { role: 'assistant', content: '已根据你的要求调整好啦，看看上面的食谱～', isAdjustment: true };
-        setChatMessages((prev) => [...prev, assistantMsg]);
-      }
-    } catch {
-      setAiError('网络连接失败，请稍后再试。');
-    } finally {
-      setGenerating(false);
     }
   }
 
@@ -163,6 +167,79 @@ export default function HomePage() {
     if (response.ok) { setAiKey(''); setAiSaved(true); setTimeout(() => setAiSettingsOpen(false), 800); }
   }
 
+  async function loadShoppingList() {
+    setShoppingLoading(true);
+    try {
+      const res = await fetch('/api/shopping');
+      const data = await res.json();
+      if (data.items) setShoppingItems(data.items);
+    } finally {
+      setShoppingLoading(false);
+    }
+  }
+
+  async function toggleShoppingItem(id: number, purchased: boolean) {
+    setShoppingItems((prev) => prev.map((item) => item.id === id ? { ...item, purchased } : item));
+    await fetch('/api/shopping', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id, purchased }),
+    });
+  }
+
+  async function loadWeekData() {
+    setWeeklyLoading(true);
+    try {
+      const res = await fetch('/api/plan/week');
+      const data = await res.json();
+      setWeeklyData(data);
+    } finally {
+      setWeeklyLoading(false);
+    }
+  }
+
+  async function triggerAgentAnalysis(triggerType: 'body' | 'fridge' | 'both', changes: string) {
+    if (agentAnalyzing) return;
+    setAgentAnalyzing(true);
+    try {
+      const res = await fetch('/api/agent/analyze', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          triggerType,
+          changes,
+          measurements: Object.fromEntries(metrics.map(([key, value, unit]) => [key, `${value}${unit}`])),
+          foods,
+          zones,
+        }),
+      });
+      if (res.ok) {
+        // Reload today data to show new insights
+        const todayRes = await fetch('/api/plan/today');
+        const todayData2 = await todayRes.json();
+        setTodayData(todayData2);
+      }
+    } catch {
+      // Silent fail - agent analysis is optional
+    } finally {
+      setAgentAnalyzing(false);
+    }
+  }
+
+  // Load shopping list when sheet opens
+  useEffect(() => {
+    if (shoppingOpen && user) {
+      void loadShoppingList();
+    }
+  }, [shoppingOpen, user]);
+
+  // Load week data when plan tab opens
+  useEffect(() => {
+    if (tab === 'plan' && user && todayData?.hasPlan && !weeklyData) {
+      void loadWeekData();
+    }
+  }, [tab, user, todayData?.hasPlan, weeklyData]);
+
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' });
     router.push('/login');
@@ -170,9 +247,9 @@ export default function HomePage() {
 
   const tabItems: [Tab, string, typeof Home][] = [
     ['today', '今日', Home],
-    ['body', '身体', Activity],
+    ['plan', '计划', CalendarRange],
     ['fridge', '冰箱', Refrigerator],
-    ['coach', '营养师', Bot],
+    ['body', '身体', Activity],
   ];
 
   if (authLoading) {
@@ -191,20 +268,51 @@ export default function HomePage() {
 
       {/* Content */}
       <div className="hide-scrollbar">
-        {tab === 'today' && <TodayView user={user} onGenerate={() => { setTab('coach'); void generateMealPlan(); }} onBody={() => setTab('body')} onProfile={() => setProfileOpen(true)} />}
-        {tab === 'body' && <BodyView onGenerate={() => { setTab('coach'); void generateMealPlan(); }} />}
-        {tab === 'fridge' && <FridgeView zones={zones} fridgeOpen={fridgeOpen} setFridgeOpen={setFridgeOpen} onSettings={() => setFridgeSettings(true)} onGenerate={() => { setTab('coach'); void generateMealPlan(); }} />}
-        {tab === 'coach' && (
-          <CoachView
-            mealPlan={mealPlan}
-            generating={generating}
-            aiError={aiError}
-            chatMessages={chatMessages}
-            prompt={prompt}
-            setPrompt={setPrompt}
-            onGenerate={generateMealPlan}
-            onAdjust={adjustPlan}
+        {tab === 'today' && (
+          <TodayView
+            user={user}
+            todayData={todayData}
+            loading={todayLoading}
+            generating={generatingPlan}
+            error={planError}
+            onGenerate={generateWeeklyPlan}
+            onPlan={() => setTab('plan')}
+            onBody={() => setTab('body')}
+            onProfile={() => setProfileOpen(true)}
+            onShopping={() => setShoppingOpen(true)}
+            onInsightRead={markInsightRead}
+          />
+        )}
+        {tab === 'plan' && (
+          <PlanView
+            todayData={todayData}
+            weeklyData={weeklyData}
+            weeklyLoading={weeklyLoading}
+            generating={generatingPlan}
+            error={planError}
+            selectedDay={selectedDay}
+            setSelectedDay={setSelectedDay}
+            onGenerate={generateWeeklyPlan}
             onSettings={() => setAiSettingsOpen(true)}
+            onShopping={() => setShoppingOpen(true)}
+          />
+        )}
+        {tab === 'fridge' && (
+          <FridgeView
+            zones={zones}
+            fridgeOpen={fridgeOpen}
+            setFridgeOpen={setFridgeOpen}
+            onSettings={() => setFridgeSettings(true)}
+            onGenerate={() => { setTab('plan'); void generateWeeklyPlan(); }}
+            onAgentAnalyze={() => triggerAgentAnalysis('fridge', '冰箱库存有更新')}
+            agentAnalyzing={agentAnalyzing}
+          />
+        )}
+        {tab === 'body' && (
+          <BodyView
+            onGenerate={() => { setTab('plan'); void generateWeeklyPlan(); }}
+            onAgentAnalyze={() => triggerAgentAnalysis('body', '身体数据有更新')}
+            agentAnalyzing={agentAnalyzing}
           />
         )}
       </div>
@@ -301,6 +409,67 @@ export default function HomePage() {
         </div>
       </Sheet>
 
+      {/* Shopping List Sheet */}
+      <Sheet open={shoppingOpen} onClose={() => setShoppingOpen(false)} title="采购清单">
+        <div className="px-4 pb-4">
+          {shoppingLoading ? (
+            <div className="py-12 text-center">
+              <Loader2 className="size-6 animate-spin text-[var(--system-green)] mx-auto" />
+              <p className="text-[14px] text-[var(--secondary-label)] mt-3">加载中…</p>
+            </div>
+          ) : shoppingItems.length === 0 ? (
+            <div className="py-12 text-center">
+              <ShoppingCart className="size-12 text-[var(--tertiary-label)] mx-auto" />
+              <p className="text-[15px] font-medium mt-4">还没有采购清单</p>
+              <p className="text-[13px] text-[var(--secondary-label)] mt-1">生成周计划后，AI 会自动列出需要购买的食材</p>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-3 px-1">
+                <p className="text-[13px] text-[var(--secondary-label)]">
+                  共 {shoppingItems.length} 项 · 已买 {shoppingItems.filter((i) => i.purchased).length} 项
+                </p>
+              </div>
+              <div className="bg-[var(--secondary-grouped-background)] rounded-2xl overflow-hidden">
+                {shoppingItems.map((item, i) => (
+                  <button
+                    key={item.id}
+                    onClick={() => toggleShoppingItem(item.id!, !item.purchased)}
+                    className={`w-full flex items-center gap-3 px-4 py-3.5 text-left ${
+                      i !== shoppingItems.length - 1 ? 'border-b border-[var(--separator)]' : ''
+                    } press-effect`}
+                  >
+                    <div className={`size-5 rounded-md border-2 flex items-center justify-center shrink-0 ${
+                      item.purchased
+                        ? 'bg-[var(--system-green)] border-[var(--system-green)]'
+                        : 'border-[var(--system-gray4)]'
+                    }`}>
+                      {item.purchased && (
+                        <svg className="size-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-[15px] font-medium ${item.purchased ? 'text-[var(--tertiary-label)] line-through' : ''}`}>
+                        {item.name}
+                      </p>
+                      <p className="text-[12px] text-[var(--secondary-label)] mt-0.5">
+                        {item.amount}
+                        {item.reason && ` · ${item.reason}`}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[12px] text-[var(--secondary-label)] mt-4 px-1 leading-[18px]">
+                点击食材标记为已采购。采购完成后可以在冰箱页添加到库存，AI 会自动调整后续食谱。
+              </p>
+            </>
+          )}
+        </div>
+      </Sheet>
+
       {/* Profile Sheet */}
       <Sheet open={profileOpen} onClose={() => setProfileOpen(false)} title="个人中心">
         <div className="px-4 pb-4 space-y-4">
@@ -344,93 +513,241 @@ export default function HomePage() {
 /* ==================== Today View ==================== */
 
 function TodayView({
-  user, onGenerate, onBody, onProfile,
+  user, todayData, loading, generating, error, onGenerate, onPlan, onBody, onProfile, onShopping, onInsightRead,
 }: {
   user: AuthUser;
+  todayData: TodayData | null;
+  loading: boolean;
+  generating: boolean;
+  error: string;
   onGenerate: () => void;
+  onPlan: () => void;
   onBody: () => void;
   onProfile: () => void;
+  onShopping: () => void;
+  onInsightRead: (id: number) => void;
 }) {
+  const today = new Date();
+  const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][today.getDay()];
+  const dateStr = `${today.getMonth() + 1}月${today.getDate()}日`;
+
+  const meals = todayData?.today.meals || {};
+  const hasPlan = todayData?.hasPlan;
+
   return (
     <div className="max-w-2xl mx-auto px-4 pb-6">
-      {/* Header with avatar */}
+      {/* Header */}
       <div className="flex items-center justify-between pt-2 pb-4">
         <div>
-          <p className="text-[13px] text-[var(--secondary-label)]">你好，{user.nickname || '轻养用户'}</p>
-          <h1 className="text-large-title">今日</h1>
+          <p className="text-[13px] text-[var(--secondary-label)]">
+            {weekday} · {dateStr}
+          </p>
+          <h1 className="text-large-title">你好，{user.nickname || '轻养用户'}</h1>
         </div>
-        <button onClick={onProfile} className="size-10 rounded-full bg-[var(--system-green)]/10 text-[var(--system-green)] flex items-center justify-center press-effect">
-          <User className="size-5" />
-        </button>
-      </div>
-
-      {/* Weight Summary Card */}
-      <div className="bg-gradient-to-br from-[var(--system-green)] to-[#30B050] rounded-2xl p-5 text-white mb-5 shadow-lg shadow-green-500/20">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-[13px] text-white/80">身体基线 · 待更新</p>
-            <p className="text-[34px] font-bold tracking-tight mt-1">53.4 <span className="text-[17px] font-normal">kg</span></p>
-          </div>
-          <button onClick={onBody} className="bg-white/20 rounded-full p-2 press-effect">
-            <ChevronRight className="size-5" />
+        <div className="flex gap-2">
+          {todayData?.insights && todayData.insights.length > 0 && (
+            <button className="relative size-10 rounded-full bg-[var(--system-gray5)] flex items-center justify-center press-effect">
+              <Bell className="size-5 text-[var(--label)]" />
+              <span className="absolute top-1.5 right-1.5 size-2 bg-[var(--system-red)] rounded-full" />
+            </button>
+          )}
+          <button onClick={onProfile} className="size-10 rounded-full bg-[var(--system-green)]/10 text-[var(--system-green)] flex items-center justify-center press-effect">
+            <User className="size-5" />
           </button>
         </div>
-        <div className="mt-5 grid grid-cols-3 gap-2">
-          <MiniStat label="体脂率" value="26.5%" />
-          <MiniStat label="肌肉量" value="37.0kg" />
-          <MiniStat label="得分" value="80" />
+      </div>
+
+      {/* Loading */}
+      {loading && (
+        <div className="bg-[var(--secondary-grouped-background)] rounded-2xl p-8 text-center mb-5">
+          <Loader2 className="size-6 animate-spin text-[var(--system-green)] mx-auto" />
+          <p className="text-[14px] text-[var(--secondary-label)] mt-3">加载中…</p>
         </div>
-        <div className="mt-4 rounded-xl bg-white/15 p-3 text-[13px] leading-[18px] text-white/90">
-          方向：不追求继续降体重，优先轻微减脂并提升肌肉。
+      )}
+
+      {/* No plan yet */}
+      {!loading && !hasPlan && (
+        <div className="bg-gradient-to-br from-[#174f3c] to-[#2b7b5d] rounded-2xl p-6 text-white mb-5">
+          <Zap className="size-9" />
+          <h2 className="text-[22px] font-bold mt-4">还没有本周计划</h2>
+          <p className="mt-2 text-[14px] leading-[22px] text-[#c5ddd3]">
+            AI 营养师会根据你的身体数据和冰箱库存，生成整周食谱和采购清单。
+          </p>
+          <button
+            onClick={onGenerate}
+            disabled={generating}
+            className="mt-5 w-full h-11 rounded-xl bg-white text-[#174f3c] font-semibold flex items-center justify-center gap-2 press-effect disabled:opacity-50"
+          >
+            {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+            {generating ? '生成中…' : '生成本周计划'}
+          </button>
+          {error && (
+            <p className="mt-3 text-[12px] text-[#ffb3b3]">{error}</p>
+          )}
         </div>
-      </div>
+      )}
 
-      {/* Meals Section */}
-      <SectionTitle eyebrow="今日餐桌" title="先用临期食材" action="AI 生成" onAction={onGenerate} />
-
-      <div className="bg-[var(--secondary-grouped-background)] rounded-2xl overflow-hidden mb-5">
-        {[
-          ['早', '鸡蛋牛油果吐司', '约 430 kcal · 蛋白质 24g', '🥑'],
-          ['午', '番茄菌菇鸡腿饭', '约 560 kcal · 蛋白质 38g', '🍅'],
-          ['晚', '柠檬虾仁蔬菜碗', '约 420 kcal · 蛋白质 32g', '🍤'],
-        ].map((m, i) => (
-          <MealRow key={m[0]} label={m[0]} name={m[1]} detail={m[2]} emoji={m[3]} last={i === 2} />
-        ))}
-      </div>
-
-      <p className="text-[12px] text-[var(--secondary-label)] leading-[18px] -mt-3 mb-5 px-1">
-        以上热量仍是临时示例范围；完成性别、年龄、身高、活动量后 AI 才会生成正式目标。
-      </p>
-
-      {/* Why This Plan */}
-      <SectionTitle eyebrow="计划说明" title="为什么这样规划" />
-
-      <div className="bg-[var(--secondary-grouped-background)] rounded-2xl overflow-hidden mb-5">
-        <ReasonItem icon={<TrendingDown className="size-5" />} iconBg="bg-[var(--system-blue)]/10" iconColor="text-[var(--system-blue)]" title="不做大热量缺口" text="BMI 20.9 已在正常范围，目标更适合身体重组。" />
-        <ReasonItem icon={<Dumbbell className="size-5" />} iconBg="bg-[var(--system-orange)]/10" iconColor="text-[var(--system-orange)]" title="每餐分配蛋白质" text="蛋白质分散到三餐而非集中在晚餐。" />
-        <ReasonItem icon={<Archive className="size-5" />} iconBg="bg-[var(--system-green)]/10" iconColor="text-[var(--system-green)]" title="库存优先" text="先用临期食材，减少浪费。" last />
-      </div>
-
-      {/* Fasting Card */}
-      <div className="bg-[var(--secondary-grouped-background)] rounded-2xl p-4 mb-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[13px] font-medium text-[var(--system-orange)]">轻断食</p>
-            <h3 className="text-[16px] font-semibold mt-1">暂不自动开启</h3>
+      {/* Plan exists: today's summary */}
+      {!loading && hasPlan && todayData && (
+        <>
+          {/* Calories Ring Card */}
+          <div className="bg-gradient-to-br from-[var(--system-green)] to-[#30B050] rounded-2xl p-5 text-white mb-5 shadow-lg shadow-green-500/20">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[13px] text-white/80">今日摄入</p>
+                <p className="text-[34px] font-bold tracking-tight mt-1">
+                  {todayData.today.calories || '—'} <span className="text-[17px] font-normal">kcal</span>
+                </p>
+              </div>
+              <button onClick={onPlan} className="bg-white/20 rounded-full px-3 py-1.5 text-[12px] font-medium press-effect flex items-center gap-1">
+                周计划
+                <ChevronRight className="size-4" />
+              </button>
+            </div>
+            <div className="mt-4 flex gap-4">
+              <div>
+                <p className="text-[12px] text-white/70">蛋白质</p>
+                <p className="text-[18px] font-semibold mt-0.5">{todayData.today.protein || 0}g</p>
+              </div>
+              <div>
+                <p className="text-[12px] text-white/70">目标</p>
+                <p className="text-[18px] font-semibold mt-0.5">{todayData.plan?.targetCalories || '—'} kcal</p>
+              </div>
+            </div>
           </div>
-          <Flame className="size-6 text-[var(--system-orange)]" />
-        </div>
-        <p className="text-[13px] text-[var(--secondary-label)] leading-[18px] mt-3">
-          确认安全信息前，不执行强制断食。
-        </p>
-      </div>
+
+          {/* AI Insights */}
+          {todayData.insights.length > 0 && (
+            <div className="mb-5 space-y-2">
+              {todayData.insights.slice(0, 3).map((insight) => (
+                <button
+                  key={insight.id}
+                  onClick={() => onInsightRead(insight.id)}
+                  className={`w-full text-left rounded-2xl p-4 flex items-start gap-3 ${
+                    insight.type === 'warning'
+                      ? 'bg-[var(--system-red)]/10 border border-[var(--system-red)]/20'
+                      : insight.type === 'suggestion'
+                        ? 'bg-[var(--system-blue)]/10 border border-[var(--system-blue)]/20'
+                        : 'bg-[var(--secondary-grouped-background)]'
+                  }`}
+                >
+                  {insight.type === 'warning' ? (
+                    <AlertCircle className="size-5 text-[var(--system-red)] shrink-0 mt-0.5" />
+                  ) : insight.type === 'suggestion' ? (
+                    <Sparkles className="size-5 text-[var(--system-blue)] shrink-0 mt-0.5" />
+                  ) : (
+                    <Info className="size-5 text-[var(--system-green)] shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[14px] font-semibold">{insight.title}</p>
+                    <p className="text-[12px] text-[var(--secondary-label)] mt-1 leading-[18px] line-clamp-2">{insight.content}</p>
+                  </div>
+                  <ChevronRight className="size-4 text-[var(--tertiary-label)] shrink-0 mt-0.5" />
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Today's Meals */}
+          <SectionTitle eyebrow="今日餐桌" title="三餐安排" action="查看全部" onAction={onPlan} />
+
+          <div className="space-y-3 mb-5">
+            {(['breakfast', 'lunch', 'dinner'] as const).map((mealType) => {
+              const dishes = meals[mealType] || [];
+              const mealCal = dishes.reduce((s, d) => s + (d.calories || 0), 0);
+              const mealProtein = dishes.reduce((s, d) => s + (d.protein || 0), 0);
+              const labels: Record<string, [string, string]> = {
+                breakfast: ['🌅', '早餐'],
+                lunch: ['☀️', '午餐'],
+                dinner: ['🌙', '晚餐'],
+              };
+              const [icon, label] = labels[mealType];
+
+              return (
+                <div key={mealType} className="bg-[var(--secondary-grouped-background)] rounded-2xl overflow-hidden">
+                  <div className="px-4 py-3 flex items-center justify-between border-b border-[var(--separator)]">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{icon}</span>
+                      <h3 className="text-[15px] font-semibold">{label}</h3>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[13px] font-semibold text-[var(--system-green)]">{mealCal} kcal</p>
+                      <p className="text-[11px] text-[var(--secondary-label)]">蛋白 {mealProtein}g</p>
+                    </div>
+                  </div>
+                  {dishes.length === 0 ? (
+                    <div className="px-4 py-6 text-center text-[13px] text-[var(--secondary-label)]">
+                      还没有安排
+                    </div>
+                  ) : (
+                    dishes.map((dish, i) => (
+                      <div key={dish.id || i} className={`px-4 py-3 ${i !== dishes.length - 1 ? 'border-b border-[var(--separator)]' : ''}`}>
+                        <div className="flex items-start justify-between">
+                          <p className="text-[14px] font-medium">{dish.name}</p>
+                          <span className="text-[11px] text-[var(--secondary-label)] shrink-0 ml-2">
+                            {dish.calories} kcal
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {dish.ingredients.slice(0, 4).map((ing) => (
+                            <span
+                              key={ing.name}
+                              className={`text-[10px] px-2 py-0.5 rounded-full ${
+                                ing.fromFridge
+                                  ? 'bg-[var(--system-green)]/10 text-[var(--system-green)]'
+                                  : 'bg-[var(--system-gray5)] text-[var(--secondary-label)]'
+                              }`}
+                            >
+                              {ing.fromFridge && '🧊 '}{ing.name}
+                            </span>
+                          ))}
+                          {dish.ingredients.length > 4 && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--system-gray5)] text-[var(--secondary-label)]">
+                              +{dish.ingredients.length - 4}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Quick Actions */}
+          <div className="grid grid-cols-2 gap-3 mb-5">
+            <button
+              onClick={onShopping}
+              className="bg-[var(--secondary-grouped-background)] rounded-2xl p-4 text-left press-effect"
+            >
+              <ShoppingCart className="size-6 text-[var(--system-orange)]" />
+              <p className="text-[14px] font-semibold mt-3">采购清单</p>
+              <p className="text-[11px] text-[var(--secondary-label)] mt-1">本周要买的食材</p>
+            </button>
+            <button
+              onClick={onGenerate}
+              disabled={generating}
+              className="bg-[var(--secondary-grouped-background)] rounded-2xl p-4 text-left press-effect disabled:opacity-50"
+            >
+              <Sparkles className="size-6 text-[var(--system-green)]" />
+              <p className="text-[14px] font-semibold mt-3">重新生成</p>
+              <p className="text-[11px] text-[var(--secondary-label)] mt-1">调整目标或偏好</p>
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 /* ==================== Body View ==================== */
 
-function BodyView({ onGenerate }: { onGenerate: () => void }) {
+function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing }: {
+  onGenerate: () => void;
+  onAgentAnalyze: () => void;
+  agentAnalyzing: boolean;
+}) {
   return (
     <div className="max-w-2xl mx-auto px-4 pb-6">
       <div className="pt-2 pb-4">
@@ -438,13 +755,34 @@ function BodyView({ onGenerate }: { onGenerate: () => void }) {
         <h1 className="text-large-title">身体数据</h1>
       </div>
 
-      <button
-        className="w-full mb-5 ios-button bg-[var(--system-green)] text-white"
-        onClick={onGenerate}
-      >
-        <Sparkles className="size-4" />
-        AI 生成今日食谱
-      </button>
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        <button
+          className="ios-button bg-[var(--secondary-grouped-background)] text-[var(--label)]"
+          onClick={onAgentAnalyze}
+          disabled={agentAnalyzing}
+        >
+          {agentAnalyzing ? <Loader2 className="size-4 animate-spin" /> : <Zap className="size-4" />}
+          {agentAnalyzing ? 'AI 分析中…' : 'AI 分析数据'}
+        </button>
+        <button
+          className="ios-button bg-[var(--system-green)] text-white"
+          onClick={onGenerate}
+        >
+          <Sparkles className="size-4" />
+          生成周计划
+        </button>
+      </div>
+
+      {/* AI Agent Status */}
+      <div className="mb-5 bg-[var(--system-blue)]/5 border border-[var(--system-blue)]/20 rounded-2xl p-3 flex items-center gap-3">
+        <div className="relative">
+          <Bot className="size-5 text-[var(--system-blue)]" />
+          <span className="absolute -top-0.5 -right-0.5 size-2 bg-[var(--system-green)] rounded-full animate-pulse" />
+        </div>
+        <p className="text-[12px] text-[var(--secondary-label)] leading-[18px]">
+          AI 营养师正在监控你的身体变化。体重或体脂波动时，会主动调整饮食建议。
+        </p>
+      </div>
 
       {/* Weight Summary */}
       <div className="grid gap-3 mb-5 md:grid-cols-3">
@@ -504,13 +842,15 @@ function BodyView({ onGenerate }: { onGenerate: () => void }) {
 /* ==================== Fridge View ==================== */
 
 function FridgeView({
-  zones, fridgeOpen, setFridgeOpen, onSettings, onGenerate,
+  zones, fridgeOpen, setFridgeOpen, onSettings, onGenerate, onAgentAnalyze, agentAnalyzing,
 }: {
   zones: Zone[];
   fridgeOpen: boolean;
   setFridgeOpen: (v: boolean) => void;
   onSettings: () => void;
   onGenerate: () => void;
+  onAgentAnalyze: () => void;
+  agentAnalyzing: boolean;
 }) {
   const total = useMemo(() => zones.reduce((s, z) => s + z.capacity, 0), [zones]);
   const used = useMemo(() => zones.reduce((s, z) => s + z.used, 0), [zones]);
@@ -618,39 +958,68 @@ function FridgeView({
         ))}
       </div>
 
-      <button
-        className="w-full ios-button bg-[var(--system-green)] text-white"
-        onClick={onGenerate}
-      >
-        <Bot className="size-4" />
-        用库存生成今日食谱
-      </button>
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          className="ios-button bg-[var(--secondary-grouped-background)] text-[var(--label)]"
+          onClick={onAgentAnalyze}
+          disabled={agentAnalyzing}
+        >
+          {agentAnalyzing ? <Loader2 className="size-4 animate-spin" /> : <Zap className="size-4" />}
+          {agentAnalyzing ? 'AI 分析中…' : 'AI 分析库存'}
+        </button>
+        <button
+          className="ios-button bg-[var(--system-green)] text-white"
+          onClick={onGenerate}
+        >
+          <Bot className="size-4" />
+          生成周计划
+        </button>
+      </div>
+
+      {/* AI Agent Status */}
+      <div className="mt-4 bg-[var(--system-blue)]/5 border border-[var(--system-blue)]/20 rounded-2xl p-3 flex items-center gap-3">
+        <div className="relative">
+          <Bot className="size-5 text-[var(--system-blue)]" />
+          <span className="absolute -top-0.5 -right-0.5 size-2 bg-[var(--system-green)] rounded-full animate-pulse" />
+        </div>
+        <p className="text-[12px] text-[var(--secondary-label)] leading-[18px]">
+          AI 营养师正在监控你的冰箱变化。新增食材或临期时，会主动给出食谱调整建议。
+        </p>
+      </div>
     </div>
   );
 }
 
 /* ==================== Coach View ==================== */
 
-function CoachView({
-  mealPlan, generating, aiError, chatMessages, prompt, setPrompt, onGenerate, onAdjust, onSettings,
+function PlanView({
+  todayData, weeklyData, weeklyLoading, generating, error, selectedDay, setSelectedDay,
+  onGenerate, onSettings, onShopping,
 }: {
-  mealPlan: MealPlan | null;
+  todayData: TodayData | null;
+  weeklyData: any;
+  weeklyLoading: boolean;
   generating: boolean;
-  aiError: string;
-  chatMessages: ChatMessage[];
-  prompt: string;
-  setPrompt: (v: string) => void;
+  error: string;
+  selectedDay: number;
+  setSelectedDay: (n: number) => void;
   onGenerate: () => void;
-  onAdjust: (q: string) => void;
   onSettings: () => void;
+  onShopping: () => void;
 }) {
-  const quickAdjusts = ['午餐换成清淡点的', '多加一份早餐', '把虾仁换成鸡胸肉', '减少点碳水'];
+  const weekDays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+  const hasPlan = todayData?.hasPlan;
 
-  if (!mealPlan && !generating && !aiError) {
+  const currentDay = weeklyData?.days?.[selectedDay];
+  const meals = currentDay?.meals || {};
+  const dayCalories = currentDay?.calories || 0;
+  const dayProtein = currentDay?.protein || 0;
+
+  if (!hasPlan) {
     return (
       <div className="max-w-2xl mx-auto px-4 pb-6">
         <div className="pt-2 pb-4 flex items-end justify-between">
-          <h1 className="text-large-title">营养师</h1>
+          <h1 className="text-large-title">周计划</h1>
           <button
             onClick={onSettings}
             className="bg-[var(--system-gray5)] text-[var(--label)] rounded-full px-4 py-2 text-[14px] font-medium press-effect flex items-center gap-1.5"
@@ -660,30 +1029,51 @@ function CoachView({
           </button>
         </div>
 
-        {/* Hero Card */}
         <div className="bg-gradient-to-br from-[#174f3c] to-[#2b7b5d] rounded-2xl p-6 text-white mb-5">
-          <Bot className="size-9" />
-          <h2 className="text-[24px] font-bold mt-4">AI 营养规划</h2>
+          <CalendarRange className="size-9" />
+          <h2 className="text-[22px] font-bold mt-4">整周饮食规划</h2>
           <p className="mt-2 text-[14px] leading-[22px] text-[#c5ddd3]">
-            根据你的身体数据和冰箱库存，生成专属的每日食谱。
+            AI 营养师一次生成 7 天食谱，每天不重样，自动匹配冰箱库存。
           </p>
         </div>
 
         <button
           className="w-full ios-button bg-[var(--system-green)] text-white mb-5"
           onClick={onGenerate}
+          disabled={generating}
         >
-          <Sparkles className="size-4" />
-          生成今日食谱
+          {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+          {generating ? '生成中，可能需要 30 秒…' : '生成本周计划'}
         </button>
 
-        {/* What it does */}
-        <SectionTitle eyebrow="能做什么" title="生成后你可以" />
-        <div className="space-y-3 mb-5">
+        {error && (
+          <div className="bg-[var(--system-orange)]/10 border border-[var(--system-orange)]/20 rounded-2xl p-4 mb-5">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="size-5 text-[var(--system-orange)] shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-[14px] font-semibold text-[var(--system-orange)]">生成失败</p>
+                <p className="text-[13px] text-[var(--label)] mt-1 leading-[18px]">{error}</p>
+                {error.includes('AI 设置') || error.includes('配置') ? (
+                  <button
+                    onClick={onSettings}
+                    className="mt-3 text-[13px] font-medium text-[var(--system-blue)]"
+                  >
+                    去配置 →
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <SectionTitle eyebrow="生成后你会得到" title="包含这些内容" />
+        <div className="space-y-3">
           {[
-            ['🍳', '三餐菜谱', '每道菜有食材、用量、热量、步骤'],
-            ['🛒', '采购清单', '告诉你还需要买什么、为什么'],
-            ['💬', '随时调整', '说「换成清淡的」「多加蛋白质」就能改'],
+            ['🍽️', '7 天三餐', '每天不重样，好吃易做'],
+            ['🛒', '采购清单', '本周需要买的所有食材'],
+            ['🧊', '库存优先', '临期食材优先消耗'],
+            ['📊', '营养分析', '每天热量和蛋白质跟踪'],
+            ['💡', 'AI 洞察', '主动发现问题并给出建议'],
           ].map(([icon, title, desc]) => (
             <div key={title} className="bg-[var(--secondary-grouped-background)] rounded-2xl p-4 flex items-center gap-3">
               <span className="text-2xl">{icon}</span>
@@ -694,14 +1084,6 @@ function CoachView({
             </div>
           ))}
         </div>
-
-        {/* Safety */}
-        <div className="bg-[var(--secondary-grouped-background)] rounded-2xl p-4">
-          <h3 className="text-[15px] font-semibold">安全边界</h3>
-          <p className="mt-2 text-[13px] text-[var(--secondary-label)] leading-[18px]">
-            不诊断疾病、不给出激进热量缺口。出现头晕心悸、月经异常等不适时建议就医。
-          </p>
-        </div>
       </div>
     );
   }
@@ -709,210 +1091,178 @@ function CoachView({
   return (
     <div className="max-w-2xl mx-auto px-4 pb-6">
       <div className="pt-2 pb-4 flex items-end justify-between">
-        <h1 className="text-large-title">今日食谱</h1>
+        <h1 className="text-large-title">周计划</h1>
         <div className="flex gap-2">
+          <button
+            onClick={onShopping}
+            className="bg-[var(--system-gray5)] text-[var(--label)] rounded-full px-3 py-2 text-[13px] font-medium press-effect flex items-center gap-1.5"
+          >
+            <ShoppingCart className="size-4" />
+            采购
+          </button>
           <button
             onClick={onGenerate}
             disabled={generating}
-            className="bg-[var(--system-gray5)] text-[var(--label)] rounded-full px-4 py-2 text-[14px] font-medium press-effect flex items-center gap-1.5 disabled:opacity-50"
+            className="bg-[var(--system-gray5)] text-[var(--label)] rounded-full px-3 py-2 text-[13px] font-medium press-effect flex items-center gap-1.5 disabled:opacity-50"
           >
             {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-            重新生成
+            重生成
           </button>
         </div>
       </div>
 
-      {generating && !mealPlan && (
+      {/* Week Summary Card */}
+      <div className="bg-gradient-to-br from-[var(--system-green)] to-[#30B050] rounded-2xl p-5 text-white mb-5 shadow-lg shadow-green-500/20">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-[13px] text-white/80">本周目标</p>
+            <p className="text-[20px] font-bold mt-1">{weeklyData?.plan?.goal || todayData?.plan?.goal || '健康减脂'}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[13px] text-white/80">日均热量</p>
+            <p className="text-[20px] font-bold mt-1">{weeklyData?.plan?.targetCalories || todayData?.plan?.targetCalories || '—'} kcal</p>
+          </div>
+        </div>
+        <div className="mt-4 rounded-xl bg-white/15 p-3 text-[13px] leading-[18px] text-white/90">
+          {weeklyData?.plan?.rationale || todayData?.plan?.rationale || 'AI 正在分析你的身体数据和冰箱库存…'}
+        </div>
+      </div>
+
+      {/* Day Selector */}
+      <div className="flex gap-1.5 mb-5 overflow-x-auto pb-1 hide-scrollbar">
+        {weekDays.map((day, i) => {
+          const dayData = weeklyData?.days?.[i];
+          const cal = dayData?.calories || 0;
+          return (
+            <button
+              key={i}
+              onClick={() => setSelectedDay(i)}
+              className={`shrink-0 px-3 py-2 rounded-xl text-[12px] font-medium transition-all flex flex-col items-center min-w-[52px] ${
+                selectedDay === i
+                  ? 'bg-[var(--system-green)] text-white'
+                  : 'bg-[var(--secondary-grouped-background)] text-[var(--secondary-label)]'
+              }`}
+            >
+              <span>{day}</span>
+              <span className={`text-[10px] mt-0.5 ${selectedDay === i ? 'text-white/80' : ''}`}>
+                {cal > 0 ? `${Math.round(cal)}` : '—'}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Selected Day Summary */}
+      {currentDay && (
+        <div className="bg-[var(--secondary-grouped-background)] rounded-2xl p-4 mb-5 flex items-center justify-between">
+          <div>
+            <p className="text-[13px] text-[var(--secondary-label)]">{weekDays[selectedDay]} 总计</p>
+            <p className="text-[22px] font-bold mt-1">{dayCalories} <span className="text-[13px] font-normal text-[var(--secondary-label)]">kcal</span></p>
+          </div>
+          <div className="text-right">
+            <p className="text-[13px] text-[var(--secondary-label)]">蛋白质</p>
+            <p className="text-[22px] font-bold mt-1 text-[var(--system-green)]">{dayProtein} <span className="text-[13px] font-normal">g</span></p>
+          </div>
+        </div>
+      )}
+
+      {/* Loading */}
+      {weeklyLoading && (
         <div className="bg-[var(--secondary-grouped-background)] rounded-2xl p-8 text-center mb-5">
-          <Loader2 className="size-8 animate-spin text-[var(--system-green)] mx-auto" />
-          <p className="text-[15px] font-medium mt-4">正在为你规划今日饮食…</p>
-          <p className="text-[12px] text-[var(--secondary-label)] mt-2">结合身体数据、冰箱库存和你的目标</p>
+          <Loader2 className="size-6 animate-spin text-[var(--system-green)] mx-auto" />
+          <p className="text-[14px] text-[var(--secondary-label)] mt-3">加载周计划…</p>
         </div>
       )}
 
-      {aiError && !mealPlan && (
-        <div className="bg-[var(--system-orange)]/10 border border-[var(--system-orange)]/20 rounded-2xl p-4 mb-5">
-          <div className="flex items-start gap-2.5">
-            <AlertCircle className="size-5 text-[var(--system-orange)] shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-[14px] font-semibold text-[var(--system-orange)]">生成失败</p>
-              <p className="text-[13px] text-[var(--label)] mt-1 leading-[18px]">{aiError}</p>
-              {aiError.includes('AI 设置') || aiError.includes('配置') ? (
-                <button
-                  onClick={onSettings}
-                  className="mt-3 text-[13px] font-medium text-[var(--system-blue)]"
-                >
-                  去配置 →
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Selected Day Meals */}
+      {!weeklyLoading && (
+        <div className="space-y-3 mb-5">
+          {(['breakfast', 'lunch', 'dinner'] as const).map((mealType) => {
+            const dishes = meals[mealType] || [];
+            const mealCal = dishes.reduce((s: number, d: Dish) => s + (d.calories || 0), 0);
+            const mealProtein = dishes.reduce((s: number, d: Dish) => s + (d.protein || 0), 0);
+            const labels: Record<string, [string, string]> = {
+              breakfast: ['🌅', '早餐'],
+              lunch: ['☀️', '午餐'],
+              dinner: ['🌙', '晚餐'],
+            };
+            const [icon, label] = labels[mealType];
 
-      {mealPlan && (
-        <>
-          {/* Summary Card */}
-          <div className="bg-gradient-to-br from-[var(--system-green)] to-[#30B050] rounded-2xl p-5 text-white mb-5 shadow-lg shadow-green-500/20">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-[13px] text-white/80">今日总计</p>
-                <p className="text-[34px] font-bold tracking-tight mt-1">
-                  {mealPlan.summary.totalCalories} <span className="text-[17px] font-normal">kcal</span>
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-[13px] text-white/80">蛋白质</p>
-                <p className="text-[22px] font-bold mt-1">{mealPlan.summary.totalProtein}g</p>
-              </div>
-            </div>
-            <div className="mt-4 rounded-xl bg-white/15 p-3 text-[13px] leading-[18px] text-white/90">
-              {mealPlan.summary.rationale}
-            </div>
-            {mealPlan.summary.missingInfo.length > 0 && (
-              <div className="mt-3 text-[12px] text-white/70">
-                ⚠️ 还缺少：{mealPlan.summary.missingInfo.join('、')}（仅供参考，不做诊断）
-              </div>
-            )}
-          </div>
-
-          {/* Meals */}
-          <SectionTitle eyebrow="今日餐桌" title="三餐安排" />
-          <div className="space-y-4 mb-5">
-            {mealPlan.meals.map((meal) => (
-              <div key={meal.type} className="bg-[var(--secondary-grouped-background)] rounded-2xl overflow-hidden">
+            return (
+              <div key={mealType} className="bg-[var(--secondary-grouped-background)] rounded-2xl overflow-hidden">
                 <div className="px-4 py-3 flex items-center justify-between border-b border-[var(--separator)]">
                   <div className="flex items-center gap-2">
-                    <span className="text-lg">
-                      {meal.type === 'breakfast' ? '🌅' : meal.type === 'lunch' ? '☀️' : meal.type === 'dinner' ? '🌙' : '🍎'}
-                    </span>
-                    <h3 className="text-[16px] font-semibold">{meal.name}</h3>
+                    <span className="text-lg">{icon}</span>
+                    <h3 className="text-[15px] font-semibold">{label}</h3>
                   </div>
                   <div className="text-right">
-                    <p className="text-[14px] font-semibold text-[var(--system-green)]">{meal.calories} kcal</p>
-                    <p className="text-[11px] text-[var(--secondary-label)]">蛋白质 {meal.protein}g</p>
+                    <p className="text-[13px] font-semibold text-[var(--system-green)]">{mealCal} kcal</p>
+                    <p className="text-[10px] text-[var(--secondary-label)]">蛋白 {mealProtein}g</p>
                   </div>
                 </div>
-                {meal.dishes.map((dish, di) => (
-                  <div key={dish.name} className={`px-4 py-3.5 ${di !== meal.dishes.length - 1 ? 'border-b border-[var(--separator)]' : ''}`}>
-                    <div className="flex items-start justify-between">
-                      <h4 className="text-[15px] font-medium">{dish.name}</h4>
-                      <span className="text-[12px] text-[var(--secondary-label)] shrink-0 ml-2">
-                        {dish.calories} kcal · {dish.protein}g 蛋白
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {dish.ingredients.map((ing) => (
-                        <span
-                          key={ing.name}
-                          className={`text-[11px] px-2 py-0.5 rounded-full ${
-                            ing.fromFridge
-                              ? 'bg-[var(--system-green)]/10 text-[var(--system-green)]'
-                              : 'bg-[var(--system-gray5)] text-[var(--secondary-label)]'
-                          }`}
-                        >
-                          {ing.fromFridge && '🧊 '}{ing.name} {ing.amount}
+                {dishes.length === 0 ? (
+                  <div className="px-4 py-6 text-center text-[13px] text-[var(--secondary-label)]">
+                    还没有安排
+                  </div>
+                ) : (
+                  dishes.map((dish: Dish, i: number) => (
+                    <div key={dish.id || i} className={`px-4 py-3 ${i !== dishes.length - 1 ? 'border-b border-[var(--separator)]' : ''}`}>
+                      <div className="flex items-start justify-between">
+                        <p className="text-[14px] font-medium">{dish.name}</p>
+                        <span className="text-[11px] text-[var(--secondary-label)] shrink-0 ml-2">
+                          {dish.calories} kcal · {dish.protein}g
                         </span>
-                      ))}
-                    </div>
-                    {dish.steps && dish.steps.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-[var(--separator)]">
-                        <p className="text-[12px] text-[var(--secondary-label)] mb-2">做法</p>
-                        <ol className="space-y-1.5">
-                          {dish.steps.map((step, si) => (
-                            <li key={si} className="text-[13px] text-[var(--label)] leading-[18px] flex gap-2">
-                              <span className="text-[var(--system-green)] font-semibold shrink-0">{si + 1}.</span>
-                              <span>{step}</span>
-                            </li>
-                          ))}
-                        </ol>
                       </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-
-          {/* Shopping List */}
-          {mealPlan.shoppingList.length > 0 && (
-            <>
-              <SectionTitle eyebrow="采购清单" title="还需要买这些" />
-              <div className="bg-[var(--secondary-grouped-background)] rounded-2xl overflow-hidden mb-5">
-                {mealPlan.shoppingList.map((item, i) => (
-                  <div key={item.name} className={`px-4 py-3 flex items-center justify-between ${i !== mealPlan.shoppingList.length - 1 ? 'border-b border-[var(--separator)]' : ''}`}>
-                    <div>
-                      <p className="text-[15px] font-medium">{item.name}</p>
-                      <p className="text-[12px] text-[var(--secondary-label)] mt-0.5">{item.reason}</p>
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {dish.ingredients.slice(0, 5).map((ing) => (
+                          <span
+                            key={ing.name}
+                            className={`text-[10px] px-2 py-0.5 rounded-full ${
+                              ing.fromFridge
+                                ? 'bg-[var(--system-green)]/10 text-[var(--system-green)]'
+                                : 'bg-[var(--system-gray5)] text-[var(--secondary-label)]'
+                            }`}
+                          >
+                            {ing.fromFridge && '🧊 '}{ing.name}
+                          </span>
+                        ))}
+                        {dish.ingredients.length > 5 && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--system-gray5)] text-[var(--secondary-label)]">
+                            +{dish.ingredients.length - 5}
+                          </span>
+                        )}
+                      </div>
+                      {dish.steps && dish.steps.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-[var(--separator)]/50">
+                          <p className="text-[11px] text-[var(--secondary-label)] mb-1">做法</p>
+                          <ol className="text-[11px] text-[var(--secondary-label)] space-y-0.5 list-decimal list-inside">
+                            {dish.steps.slice(0, 3).map((step, si) => (
+                              <li key={si} className="line-clamp-1">{step}</li>
+                            ))}
+                          </ol>
+                        </div>
+                      )}
                     </div>
-                    <span className="text-[14px] font-semibold text-[var(--system-orange)]">{item.amount}</span>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
-            </>
-          )}
-
-          {/* Chat / Adjust */}
-          <SectionTitle eyebrow="调整食谱" title="想改什么直接说" />
-
-          {chatMessages.length === 0 && (
-            <div className="flex flex-wrap gap-2 mb-4">
-              {quickAdjusts.map((q) => (
-                <button
-                  key={q}
-                  onClick={() => onAdjust(q)}
-                  className="rounded-full bg-[var(--secondary-grouped-background)] px-3 py-2 text-[13px] text-[var(--system-blue)] press-effect"
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {chatMessages.length > 0 && (
-            <div className="space-y-3 mb-4">
-              {chatMessages.map((msg, i) => (
-                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-[14px] leading-[20px] ${
-                    msg.role === 'user'
-                      ? 'bg-[var(--system-green)] text-white rounded-tr-md'
-                      : msg.isAdjustment
-                        ? 'bg-[var(--system-green)]/10 text-[var(--label)] rounded-tl-md border border-[var(--system-green)]/20'
-                        : 'bg-[var(--secondary-grouped-background)] text-[var(--label)] rounded-tl-md'
-                  }`}>
-                    {msg.content}
-                  </div>
-                </div>
-              ))}
-              {generating && (
-                <div className="flex justify-start">
-                  <div className="bg-[var(--secondary-grouped-background)] rounded-full px-4 py-2 text-[13px] text-[var(--secondary-label)]">
-                    正在调整…
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="flex gap-2 bg-[var(--secondary-grouped-background)] rounded-2xl p-2">
-            <input
-              className="ios-input flex-1 bg-transparent border-0"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && void onAdjust(prompt)}
-              placeholder="比如：晚餐别吃虾，换成牛肉"
-              disabled={generating}
-            />
-            <button
-              className="w-10 h-10 rounded-full bg-[var(--system-green)] text-white flex items-center justify-center press-effect disabled:opacity-50 shrink-0"
-              onClick={() => onAdjust(prompt)}
-              disabled={generating || !prompt.trim()}
-            >
-              <Send className="size-4" />
-            </button>
-          </div>
-        </>
+            );
+          })}
+        </div>
       )}
+
+      {/* AI Agent Note */}
+      <div className="bg-[var(--system-blue)]/5 border border-[var(--system-blue)]/20 rounded-2xl p-4">
+        <div className="flex items-start gap-3">
+          <Zap className="size-5 text-[var(--system-blue)] shrink-0 mt-0.5" />
+          <div>
+            <p className="text-[14px] font-semibold">AI 营养师 Agent</p>
+            <p className="text-[12px] text-[var(--secondary-label)] mt-1 leading-[18px]">
+              当你更新体重或冰箱食材时，AI 会主动分析变化并给出调整建议，不用你主动问。
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

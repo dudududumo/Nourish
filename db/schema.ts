@@ -50,3 +50,69 @@ export const aiSettings = sqliteTable('ai_settings', {
   iv: text('iv').notNull(),
   updatedAt: text('updated_at').notNull(),
 });
+
+/* ===== Weekly Meal Plan (structured) ===== */
+
+export const weeklyPlans = sqliteTable('weekly_plans', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: text('user_id').notNull(),
+  weekStart: text('week_start').notNull(), // YYYY-MM-DD (Monday)
+  weekEnd: text('week_end').notNull(),     // YYYY-MM-DD (Sunday)
+  status: text('status').notNull().default('active'), // active | archived
+  goal: text('goal'),
+  targetCalories: real('target_calories'),
+  targetProtein: real('target_protein'),
+  rationale: text('rationale'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, (table) => [
+  index('idx_weekly_plans_user_week').on(table.userId, table.weekStart),
+]);
+
+export const dailyMeals = sqliteTable('daily_meals', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  planId: integer('plan_id').notNull(),
+  userId: text('user_id').notNull(),
+  date: text('date').notNull(), // YYYY-MM-DD
+  dayOfWeek: integer('day_of_week').notNull(), // 0=Mon ... 6=Sun
+  mealType: text('meal_type').notNull(), // breakfast | lunch | dinner | snack
+  dishName: text('dish_name').notNull(),
+  calories: real('calories').notNull().default(0),
+  protein: real('protein').notNull().default(0),
+  ingredientsJson: text('ingredients_json').notNull().default('[]'), // [{name, amount, fromFridge}]
+  stepsJson: text('steps_json').notNull().default('[]'),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: text('created_at').notNull(),
+}, (table) => [
+  index('idx_daily_meals_plan_date').on(table.planId, table.date),
+  index('idx_daily_meals_user_date').on(table.userId, table.date),
+]);
+
+export const shoppingItems = sqliteTable('shopping_items', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  planId: integer('plan_id').notNull(),
+  userId: text('user_id').notNull(),
+  name: text('name').notNull(),
+  amount: text('amount').notNull(),
+  reason: text('reason'),
+  purchased: integer('purchased').notNull().default(0),
+  createdAt: text('created_at').notNull(),
+}, (table) => [
+  index('idx_shopping_items_plan').on(table.planId),
+]);
+
+export const aiInsights = sqliteTable('ai_insights', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: text('user_id').notNull(),
+  type: text('type').notNull(), // observation | suggestion | warning
+  category: text('category'), // body | nutrition | fridge | habit
+  title: text('title').notNull(),
+  content: text('content').notNull(),
+  priority: integer('priority').notNull().default(0), // higher = more important
+  relatedPlanId: integer('related_plan_id'),
+  readAt: text('read_at'),
+  createdAt: text('created_at').notNull(),
+}, (table) => [
+  index('idx_insights_user_created').on(table.userId, table.createdAt),
+  index('idx_insights_user_unread').on(table.userId, table.readAt),
+]);
