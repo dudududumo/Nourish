@@ -12,6 +12,17 @@ import {
 type Tab = 'today' | 'body' | 'fridge' | 'coach';
 type Zone = { id: string; name: string; type: '冷藏' | '冷冻'; capacity: number; used: number; icon: string };
 
+type DishIngredient = { name: string; amount: string; fromFridge?: boolean };
+type Dish = { name: string; ingredients: DishIngredient[]; calories: number; protein: number; steps?: string[] };
+type Meal = { type: 'breakfast' | 'lunch' | 'dinner' | 'snack'; name: string; calories: number; protein: number; dishes: Dish[] };
+type ShoppingItem = { name: string; amount: string; reason: string };
+type MealPlan = {
+  summary: { totalCalories: number; totalProtein: number; rationale: string; missingInfo: string[] };
+  meals: Meal[];
+  shoppingList: ShoppingItem[];
+};
+type ChatMessage = { role: 'user' | 'assistant'; content: string; isAdjustment?: boolean };
+
 const metrics = [
   ['体重', '53.4', 'kg', '较上次 +0.3', 'normal'], ['BMI', '20.9', '', '标准', 'normal'],
   ['体脂率', '26.5', '%', '较上次 −0.4', 'normal'], ['脂肪量', '14.2', 'kg', '趋势下降', 'normal'],
@@ -44,7 +55,6 @@ export default function HomePage() {
   const [tab, setTab] = useState<Tab>('today');
   const [user, setUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [aiOpen, setAiOpen] = useState(false);
   const [fridgeSettings, setFridgeSettings] = useState(false);
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -54,9 +64,10 @@ export default function HomePage() {
   const [aiSaving, setAiSaving] = useState(false);
   const [aiSaved, setAiSaved] = useState(false);
   const [zones, setZones] = useState(initialZones);
-  const [prompt, setPrompt] = useState('为什么今天这样安排？');
-  const [answer, setAnswer] = useState('');
-  const [asking, setAsking] = useState(false);
+  const [prompt, setPrompt] = useState('');
+  const [mealPlan, setMealPlan] = useState<MealPlan | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [aiError, setAiError] = useState('');
   const [fridgeOpen, setFridgeOpen] = useState(false);
 
@@ -75,33 +86,68 @@ export default function HomePage() {
       .finally(() => setAuthLoading(false));
   }, [router]);
 
-  async function askCoach(question = prompt) {
-    if (!question.trim() || asking) return;
-    setAsking(true); setAnswer(''); setAiError(''); setAiOpen(true);
+  async function generateMealPlan() {
+    if (generating) return;
+    setGenerating(true); setAiError(''); setMealPlan(null); setChatMessages([]);
     try {
-      const response = await fetch('/api/coach', {
+      const response = await fetch('/api/coach/plan', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          question,
-          context: {
-            latestMeasurement: Object.fromEntries(metrics.map(([key, value, unit]) => [key, `${value}${unit}`])),
-            zones,
-            goal: '健康减脂并提升肌肉量',
-            constraints: '宿舍环境、偏好普拉提、希望好吃易做',
-          },
+          measurements: Object.fromEntries(metrics.map(([key, value, unit]) => [key, `${value}${unit}`])),
+          zones,
+          foods,
+          goal: '健康减脂并提升肌肉量',
+          constraints: '宿舍环境、小锅、简单易做、好吃不水煮',
         }),
       });
-      const data = await response.json() as { answer?: string; error?: string };
+      const data = await response.json() as { plan?: MealPlan; error?: string };
       if (!response.ok) {
-        setAiError(data.error ?? '暂时无法连接营养师，请稍后再试。');
-      } else {
-        setAnswer(data.answer ?? '');
+        setAiError(data.error ?? '生成失败，请稍后再试。');
+      } else if (data.plan) {
+        setMealPlan(data.plan);
       }
     } catch {
       setAiError('网络连接失败，请稍后再试。');
     } finally {
-      setAsking(false);
+      setGenerating(false);
+    }
+  }
+
+  async function adjustPlan(request: string) {
+    if (!mealPlan || generating || !request.trim()) return;
+    const userMsg: ChatMessage = { role: 'user', content: request };
+    setChatMessages((prev) => [...prev, userMsg]);
+    setPrompt('');
+    setGenerating(true); setAiError('');
+    try {
+      const response = await fetch('/api/coach/plan', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          measurements: Object.fromEntries(metrics.map(([key, value, unit]) => [key, `${value}${unit}`])),
+          zones,
+          foods,
+          goal: '健康减脂并提升肌肉量',
+          constraints: '宿舍环境、小锅、简单易做、好吃不水煮',
+          currentPlan: mealPlan,
+          adjustRequest: request,
+        }),
+      });
+      const data = await response.json() as { plan?: MealPlan; error?: string };
+      if (!response.ok) {
+        setAiError(data.error ?? '调整失败，请稍后再试。');
+        const assistantMsg: ChatMessage = { role: 'assistant', content: data.error ?? '调整失败，请稍后再试。' };
+        setChatMessages((prev) => [...prev, assistantMsg]);
+      } else if (data.plan) {
+        setMealPlan(data.plan);
+        const assistantMsg: ChatMessage = { role: 'assistant', content: '已根据你的要求调整好啦，看看上面的食谱～', isAdjustment: true };
+        setChatMessages((prev) => [...prev, assistantMsg]);
+      }
+    } catch {
+      setAiError('网络连接失败，请稍后再试。');
+    } finally {
+      setGenerating(false);
     }
   }
 
@@ -145,10 +191,22 @@ export default function HomePage() {
 
       {/* Content */}
       <div className="hide-scrollbar">
-        {tab === 'today' && <TodayView user={user} onAsk={askCoach} onBody={() => setTab('body')} onProfile={() => setProfileOpen(true)} />}
-        {tab === 'body' && <BodyView onAsk={askCoach} />}
-        {tab === 'fridge' && <FridgeView zones={zones} fridgeOpen={fridgeOpen} setFridgeOpen={setFridgeOpen} onSettings={() => setFridgeSettings(true)} onAsk={askCoach} />}
-        {tab === 'coach' && <CoachView onAsk={askCoach} onSettings={() => setAiSettingsOpen(true)} />}
+        {tab === 'today' && <TodayView user={user} onGenerate={() => { setTab('coach'); void generateMealPlan(); }} onBody={() => setTab('body')} onProfile={() => setProfileOpen(true)} />}
+        {tab === 'body' && <BodyView onGenerate={() => { setTab('coach'); void generateMealPlan(); }} />}
+        {tab === 'fridge' && <FridgeView zones={zones} fridgeOpen={fridgeOpen} setFridgeOpen={setFridgeOpen} onSettings={() => setFridgeSettings(true)} onGenerate={() => { setTab('coach'); void generateMealPlan(); }} />}
+        {tab === 'coach' && (
+          <CoachView
+            mealPlan={mealPlan}
+            generating={generating}
+            aiError={aiError}
+            chatMessages={chatMessages}
+            prompt={prompt}
+            setPrompt={setPrompt}
+            onGenerate={generateMealPlan}
+            onAdjust={adjustPlan}
+            onSettings={() => setAiSettingsOpen(true)}
+          />
+        )}
       </div>
 
       {/* iOS Tab Bar */}
@@ -166,87 +224,6 @@ export default function HomePage() {
           ))}
         </div>
       </nav>
-
-      {/* AI Coach Sheet */}
-      <Sheet open={aiOpen} onClose={() => setAiOpen(false)} title="轻养 AI 营养师">
-        <div className="flex flex-col h-full">
-          <div className="px-4 pb-3">
-            <p className="text-[13px] text-[var(--secondary-label)] leading-[18px]">
-              基于你的身体趋势、实际饮食、冰箱库存和训练恢复回答。
-            </p>
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-4 space-y-3 pb-4 ios-scroll">
-            <div className="max-w-[88%] bg-[var(--secondary-grouped-background)] rounded-2xl rounded-tl-md px-4 py-3 text-[15px] leading-[22px] shadow-sm">
-              <p className="mb-1 font-semibold text-[var(--system-green)]">今天我会重点看三件事</p>
-              <p className="text-[var(--secondary-label)]">体重与体脂的长期趋势、蛋白质是否分布到每餐，以及冰箱中临期食材是否能在营养目标内优先消耗。你可以质疑或调整任何建议。</p>
-            </div>
-
-            {asking && (
-              <div className="w-fit bg-[var(--secondary-grouped-background)] rounded-full px-4 py-2 text-[13px] text-[var(--secondary-label)] shadow-sm">
-                正在结合你的数据分析…
-              </div>
-            )}
-
-            {aiError && (
-              <div className="bg-[var(--system-orange)]/10 border border-[var(--system-orange)]/20 rounded-2xl px-4 py-3">
-                <div className="flex items-start gap-2.5">
-                  <AlertCircle className="size-5 text-[var(--system-orange)] shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <p className="text-[14px] font-semibold text-[var(--system-orange)]">暂时无法使用</p>
-                    <p className="text-[13px] text-[var(--label)] mt-1 leading-[18px]">{aiError}</p>
-                    {aiError.includes('AI 设置') || aiError.includes('配置') ? (
-                      <button
-                        onClick={() => { setAiOpen(false); setAiSettingsOpen(true); }}
-                        className="mt-3 text-[13px] font-medium text-[var(--system-blue)]"
-                      >
-                        去配置 →
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {answer && (
-              <div className="max-w-[92%] whitespace-pre-wrap bg-[var(--secondary-grouped-background)] rounded-2xl rounded-tl-md px-4 py-3 text-[15px] leading-[22px] shadow-sm">
-                {answer}
-              </div>
-            )}
-
-            {!answer && !asking && (
-              <div className="flex flex-wrap gap-2 pt-2">
-                {['为什么不建议激进减脂？', '用冰箱现有食材换一份晚餐', '今天适合做普拉提吗？'].map((q) => (
-                  <button
-                    key={q}
-                    onClick={() => { setPrompt(q); void askCoach(q); }}
-                    className="rounded-full bg-[var(--secondary-grouped-background)] px-3 py-2 text-[13px] text-[var(--system-blue)] press-effect"
-                  >
-                    {q}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="flex gap-2 border-t border-[var(--separator)] bg-[var(--secondary-grouped-background)] p-3">
-            <input
-              className="ios-input flex-1"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && void askCoach()}
-              placeholder="问我任何饮食或训练问题"
-            />
-            <button
-              className="w-9 h-9 rounded-full bg-[var(--system-green)] text-white flex items-center justify-center press-effect disabled:opacity-50"
-              onClick={() => void askCoach()}
-              disabled={asking}
-            >
-              <Send className="size-4" />
-            </button>
-          </div>
-        </div>
-      </Sheet>
 
       {/* Fridge Settings Sheet */}
       <Sheet open={fridgeSettings} onClose={() => setFridgeSettings(false)} title="设置冰箱容量与分区">
@@ -367,10 +344,10 @@ export default function HomePage() {
 /* ==================== Today View ==================== */
 
 function TodayView({
-  user, onAsk, onBody, onProfile,
+  user, onGenerate, onBody, onProfile,
 }: {
   user: AuthUser;
-  onAsk: (q: string) => void;
+  onGenerate: () => void;
   onBody: () => void;
   onProfile: () => void;
 }) {
@@ -409,7 +386,7 @@ function TodayView({
       </div>
 
       {/* Meals Section */}
-      <SectionTitle eyebrow="今日餐桌" title="先用临期食材" action="AI 调整" onAction={() => onAsk('请结合我的体脂秤数据和冰箱库存，调整今天三餐并逐条解释原因。')} />
+      <SectionTitle eyebrow="今日餐桌" title="先用临期食材" action="AI 生成" onAction={onGenerate} />
 
       <div className="bg-[var(--secondary-grouped-background)] rounded-2xl overflow-hidden mb-5">
         {[
@@ -453,7 +430,7 @@ function TodayView({
 
 /* ==================== Body View ==================== */
 
-function BodyView({ onAsk }: { onAsk: (q: string) => void }) {
+function BodyView({ onGenerate }: { onGenerate: () => void }) {
   return (
     <div className="max-w-2xl mx-auto px-4 pb-6">
       <div className="pt-2 pb-4">
@@ -463,10 +440,10 @@ function BodyView({ onAsk }: { onAsk: (q: string) => void }) {
 
       <button
         className="w-full mb-5 ios-button bg-[var(--system-green)] text-white"
-        onClick={() => onAsk('请解读我全部体脂秤指标：区分可直接采用、只看趋势、需要复测和需要就医关注的项目。')}
+        onClick={onGenerate}
       >
         <Sparkles className="size-4" />
-        AI 全面解读
+        AI 生成今日食谱
       </button>
 
       {/* Weight Summary */}
@@ -527,13 +504,13 @@ function BodyView({ onAsk }: { onAsk: (q: string) => void }) {
 /* ==================== Fridge View ==================== */
 
 function FridgeView({
-  zones, fridgeOpen, setFridgeOpen, onSettings, onAsk,
+  zones, fridgeOpen, setFridgeOpen, onSettings, onGenerate,
 }: {
   zones: Zone[];
   fridgeOpen: boolean;
   setFridgeOpen: (v: boolean) => void;
   onSettings: () => void;
-  onAsk: (q: string) => void;
+  onGenerate: () => void;
 }) {
   const total = useMemo(() => zones.reduce((s, z) => s + z.capacity, 0), [zones]);
   const used = useMemo(() => zones.reduce((s, z) => s + z.used, 0), [zones]);
@@ -643,10 +620,10 @@ function FridgeView({
 
       <button
         className="w-full ios-button bg-[var(--system-green)] text-white"
-        onClick={() => onAsk('请根据冷藏和冷冻分区容量、现有库存与保质期，生成三天采购清单，并解释每样食材放在哪里。')}
+        onClick={onGenerate}
       >
         <Bot className="size-4" />
-        让 AI 规划采购
+        用库存生成今日食谱
       </button>
     </div>
   );
@@ -654,57 +631,288 @@ function FridgeView({
 
 /* ==================== Coach View ==================== */
 
-function CoachView({ onAsk, onSettings }: { onAsk: (q: string) => void; onSettings: () => void }) {
+function CoachView({
+  mealPlan, generating, aiError, chatMessages, prompt, setPrompt, onGenerate, onAdjust, onSettings,
+}: {
+  mealPlan: MealPlan | null;
+  generating: boolean;
+  aiError: string;
+  chatMessages: ChatMessage[];
+  prompt: string;
+  setPrompt: (v: string) => void;
+  onGenerate: () => void;
+  onAdjust: (q: string) => void;
+  onSettings: () => void;
+}) {
+  const quickAdjusts = ['午餐换成清淡点的', '多加一份早餐', '把虾仁换成鸡胸肉', '减少点碳水'];
+
+  if (!mealPlan && !generating && !aiError) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 pb-6">
+        <div className="pt-2 pb-4 flex items-end justify-between">
+          <h1 className="text-large-title">营养师</h1>
+          <button
+            onClick={onSettings}
+            className="bg-[var(--system-gray5)] text-[var(--label)] rounded-full px-4 py-2 text-[14px] font-medium press-effect flex items-center gap-1.5"
+          >
+            <Settings className="size-4" />
+            设置
+          </button>
+        </div>
+
+        {/* Hero Card */}
+        <div className="bg-gradient-to-br from-[#174f3c] to-[#2b7b5d] rounded-2xl p-6 text-white mb-5">
+          <Bot className="size-9" />
+          <h2 className="text-[24px] font-bold mt-4">AI 营养规划</h2>
+          <p className="mt-2 text-[14px] leading-[22px] text-[#c5ddd3]">
+            根据你的身体数据和冰箱库存，生成专属的每日食谱。
+          </p>
+        </div>
+
+        <button
+          className="w-full ios-button bg-[var(--system-green)] text-white mb-5"
+          onClick={onGenerate}
+        >
+          <Sparkles className="size-4" />
+          生成今日食谱
+        </button>
+
+        {/* What it does */}
+        <SectionTitle eyebrow="能做什么" title="生成后你可以" />
+        <div className="space-y-3 mb-5">
+          {[
+            ['🍳', '三餐菜谱', '每道菜有食材、用量、热量、步骤'],
+            ['🛒', '采购清单', '告诉你还需要买什么、为什么'],
+            ['💬', '随时调整', '说「换成清淡的」「多加蛋白质」就能改'],
+          ].map(([icon, title, desc]) => (
+            <div key={title} className="bg-[var(--secondary-grouped-background)] rounded-2xl p-4 flex items-center gap-3">
+              <span className="text-2xl">{icon}</span>
+              <div>
+                <p className="text-[15px] font-semibold">{title}</p>
+                <p className="text-[12px] text-[var(--secondary-label)] mt-0.5">{desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Safety */}
+        <div className="bg-[var(--secondary-grouped-background)] rounded-2xl p-4">
+          <h3 className="text-[15px] font-semibold">安全边界</h3>
+          <p className="mt-2 text-[13px] text-[var(--secondary-label)] leading-[18px]">
+            不诊断疾病、不给出激进热量缺口。出现头晕心悸、月经异常等不适时建议就医。
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-2xl mx-auto px-4 pb-6">
       <div className="pt-2 pb-4 flex items-end justify-between">
-        <h1 className="text-large-title">营养师</h1>
-        <button
-          onClick={onSettings}
-          className="bg-[var(--system-gray5)] text-[var(--label)] rounded-full px-4 py-2 text-[14px] font-medium press-effect flex items-center gap-1.5"
-        >
-          <Settings className="size-4" />
-          设置
-        </button>
-      </div>
-
-      {/* Hero Card */}
-      <div className="bg-gradient-to-br from-[#174f3c] to-[#2b7b5d] rounded-2xl p-6 text-white mb-5">
-        <Bot className="size-9" />
-        <h2 className="text-[24px] font-bold mt-4">随叫随到的营养师</h2>
-        <p className="mt-2 text-[14px] leading-[22px] text-[#c5ddd3]">
-          每次建议都说明使用了哪些数据、哪些是估算、为什么调整。
-        </p>
-      </div>
-
-      {/* Quick Actions */}
-      <SectionTitle eyebrow="快捷功能" title="我想..." />
-      <div className="grid gap-3 mb-5 sm:grid-cols-2">
-        {[
-          ['生成 3 天计划', '结合身体趋势、预算和库存'],
-          ['追问每顿原因', '热量、蛋白质、饱腹感'],
-          ['替换菜谱', '不爱吃、没时间时重排'],
-          ['训练恢复建议', '普拉提、步行安排'],
-        ].map(([t, d]) => (
+        <h1 className="text-large-title">今日食谱</h1>
+        <div className="flex gap-2">
           <button
-            key={t}
-            onClick={() => onAsk(`请开始"${t}"，并先告诉我你还缺少哪些必要信息。`)}
-            className="bg-[var(--secondary-grouped-background)] rounded-2xl p-4 text-left press-effect"
+            onClick={onGenerate}
+            disabled={generating}
+            className="bg-[var(--system-gray5)] text-[var(--label)] rounded-full px-4 py-2 text-[14px] font-medium press-effect flex items-center gap-1.5 disabled:opacity-50"
           >
-            <p className="text-[15px] font-semibold">{t}</p>
-            <p className="mt-1 text-[12px] text-[var(--secondary-label)] leading-[18px]">{d}</p>
-            <ChevronRight className="mt-3 size-4 text-[var(--system-green)]" />
+            {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+            重新生成
           </button>
-        ))}
+        </div>
       </div>
 
-      {/* Safety */}
-      <div className="bg-[var(--secondary-grouped-background)] rounded-2xl p-4">
-        <h3 className="text-[15px] font-semibold">安全边界</h3>
-        <p className="mt-2 text-[13px] text-[var(--secondary-label)] leading-[18px]">
-          不诊断疾病、不把断食当惩罚。出现头晕心悸、月经异常等不适时建议就医。
-        </p>
-      </div>
+      {generating && !mealPlan && (
+        <div className="bg-[var(--secondary-grouped-background)] rounded-2xl p-8 text-center mb-5">
+          <Loader2 className="size-8 animate-spin text-[var(--system-green)] mx-auto" />
+          <p className="text-[15px] font-medium mt-4">正在为你规划今日饮食…</p>
+          <p className="text-[12px] text-[var(--secondary-label)] mt-2">结合身体数据、冰箱库存和你的目标</p>
+        </div>
+      )}
+
+      {aiError && !mealPlan && (
+        <div className="bg-[var(--system-orange)]/10 border border-[var(--system-orange)]/20 rounded-2xl p-4 mb-5">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="size-5 text-[var(--system-orange)] shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-[14px] font-semibold text-[var(--system-orange)]">生成失败</p>
+              <p className="text-[13px] text-[var(--label)] mt-1 leading-[18px]">{aiError}</p>
+              {aiError.includes('AI 设置') || aiError.includes('配置') ? (
+                <button
+                  onClick={onSettings}
+                  className="mt-3 text-[13px] font-medium text-[var(--system-blue)]"
+                >
+                  去配置 →
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mealPlan && (
+        <>
+          {/* Summary Card */}
+          <div className="bg-gradient-to-br from-[var(--system-green)] to-[#30B050] rounded-2xl p-5 text-white mb-5 shadow-lg shadow-green-500/20">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[13px] text-white/80">今日总计</p>
+                <p className="text-[34px] font-bold tracking-tight mt-1">
+                  {mealPlan.summary.totalCalories} <span className="text-[17px] font-normal">kcal</span>
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-[13px] text-white/80">蛋白质</p>
+                <p className="text-[22px] font-bold mt-1">{mealPlan.summary.totalProtein}g</p>
+              </div>
+            </div>
+            <div className="mt-4 rounded-xl bg-white/15 p-3 text-[13px] leading-[18px] text-white/90">
+              {mealPlan.summary.rationale}
+            </div>
+            {mealPlan.summary.missingInfo.length > 0 && (
+              <div className="mt-3 text-[12px] text-white/70">
+                ⚠️ 还缺少：{mealPlan.summary.missingInfo.join('、')}（仅供参考，不做诊断）
+              </div>
+            )}
+          </div>
+
+          {/* Meals */}
+          <SectionTitle eyebrow="今日餐桌" title="三餐安排" />
+          <div className="space-y-4 mb-5">
+            {mealPlan.meals.map((meal) => (
+              <div key={meal.type} className="bg-[var(--secondary-grouped-background)] rounded-2xl overflow-hidden">
+                <div className="px-4 py-3 flex items-center justify-between border-b border-[var(--separator)]">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">
+                      {meal.type === 'breakfast' ? '🌅' : meal.type === 'lunch' ? '☀️' : meal.type === 'dinner' ? '🌙' : '🍎'}
+                    </span>
+                    <h3 className="text-[16px] font-semibold">{meal.name}</h3>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[14px] font-semibold text-[var(--system-green)]">{meal.calories} kcal</p>
+                    <p className="text-[11px] text-[var(--secondary-label)]">蛋白质 {meal.protein}g</p>
+                  </div>
+                </div>
+                {meal.dishes.map((dish, di) => (
+                  <div key={dish.name} className={`px-4 py-3.5 ${di !== meal.dishes.length - 1 ? 'border-b border-[var(--separator)]' : ''}`}>
+                    <div className="flex items-start justify-between">
+                      <h4 className="text-[15px] font-medium">{dish.name}</h4>
+                      <span className="text-[12px] text-[var(--secondary-label)] shrink-0 ml-2">
+                        {dish.calories} kcal · {dish.protein}g 蛋白
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {dish.ingredients.map((ing) => (
+                        <span
+                          key={ing.name}
+                          className={`text-[11px] px-2 py-0.5 rounded-full ${
+                            ing.fromFridge
+                              ? 'bg-[var(--system-green)]/10 text-[var(--system-green)]'
+                              : 'bg-[var(--system-gray5)] text-[var(--secondary-label)]'
+                          }`}
+                        >
+                          {ing.fromFridge && '🧊 '}{ing.name} {ing.amount}
+                        </span>
+                      ))}
+                    </div>
+                    {dish.steps && dish.steps.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-[var(--separator)]">
+                        <p className="text-[12px] text-[var(--secondary-label)] mb-2">做法</p>
+                        <ol className="space-y-1.5">
+                          {dish.steps.map((step, si) => (
+                            <li key={si} className="text-[13px] text-[var(--label)] leading-[18px] flex gap-2">
+                              <span className="text-[var(--system-green)] font-semibold shrink-0">{si + 1}.</span>
+                              <span>{step}</span>
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+
+          {/* Shopping List */}
+          {mealPlan.shoppingList.length > 0 && (
+            <>
+              <SectionTitle eyebrow="采购清单" title="还需要买这些" />
+              <div className="bg-[var(--secondary-grouped-background)] rounded-2xl overflow-hidden mb-5">
+                {mealPlan.shoppingList.map((item, i) => (
+                  <div key={item.name} className={`px-4 py-3 flex items-center justify-between ${i !== mealPlan.shoppingList.length - 1 ? 'border-b border-[var(--separator)]' : ''}`}>
+                    <div>
+                      <p className="text-[15px] font-medium">{item.name}</p>
+                      <p className="text-[12px] text-[var(--secondary-label)] mt-0.5">{item.reason}</p>
+                    </div>
+                    <span className="text-[14px] font-semibold text-[var(--system-orange)]">{item.amount}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Chat / Adjust */}
+          <SectionTitle eyebrow="调整食谱" title="想改什么直接说" />
+
+          {chatMessages.length === 0 && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {quickAdjusts.map((q) => (
+                <button
+                  key={q}
+                  onClick={() => onAdjust(q)}
+                  className="rounded-full bg-[var(--secondary-grouped-background)] px-3 py-2 text-[13px] text-[var(--system-blue)] press-effect"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {chatMessages.length > 0 && (
+            <div className="space-y-3 mb-4">
+              {chatMessages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-[14px] leading-[20px] ${
+                    msg.role === 'user'
+                      ? 'bg-[var(--system-green)] text-white rounded-tr-md'
+                      : msg.isAdjustment
+                        ? 'bg-[var(--system-green)]/10 text-[var(--label)] rounded-tl-md border border-[var(--system-green)]/20'
+                        : 'bg-[var(--secondary-grouped-background)] text-[var(--label)] rounded-tl-md'
+                  }`}>
+                    {msg.content}
+                  </div>
+                </div>
+              ))}
+              {generating && (
+                <div className="flex justify-start">
+                  <div className="bg-[var(--secondary-grouped-background)] rounded-full px-4 py-2 text-[13px] text-[var(--secondary-label)]">
+                    正在调整…
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex gap-2 bg-[var(--secondary-grouped-background)] rounded-2xl p-2">
+            <input
+              className="ios-input flex-1 bg-transparent border-0"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void onAdjust(prompt)}
+              placeholder="比如：晚餐别吃虾，换成牛肉"
+              disabled={generating}
+            />
+            <button
+              className="w-10 h-10 rounded-full bg-[var(--system-green)] text-white flex items-center justify-center press-effect disabled:opacity-50 shrink-0"
+              onClick={() => onAdjust(prompt)}
+              disabled={generating || !prompt.trim()}
+            >
+              <Send className="size-4" />
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
