@@ -1202,8 +1202,24 @@ function PlanView({
   onSettings: () => void;
   onShopping: () => void;
 }) {
-  const weekDays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
   const hasPlan = todayData?.hasPlan;
+
+  // 从 weeklyData 里取每天的日期信息，如果没有就用星期名兜底
+  const dayLabels = useMemo(() => {
+    if (weeklyData?.days && weeklyData.days.length > 0) {
+      const weekdayNames = ['日', '一', '二', '三', '四', '五', '六'];
+      return weeklyData.days.map((d: any, i: number) => {
+        const date = new Date(d.date);
+        const month = date.getMonth() + 1;
+        const day = date.getDate();
+        const weekday = `周${weekdayNames[date.getDay()]}`;
+        if (i === 0) return { main: '今天', sub: `${month}/${day}` };
+        if (i === 1) return { main: '明天', sub: `${month}/${day}` };
+        return { main: weekday, sub: `${month}/${day}` };
+      });
+    }
+    return ['周一', '周二', '周三', '周四', '周五', '周六', '周日'].map((d) => ({ main: d, sub: '' }));
+  }, [weeklyData]);
 
   const currentDay = weeklyData?.days?.[selectedDay];
   const meals = currentDay?.meals || {};
@@ -1247,7 +1263,7 @@ function PlanView({
               <AlertCircle className="size-5 text-[var(--system-orange)] shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="text-[14px] font-semibold text-[var(--system-orange)]">生成失败</p>
-                <p className="text-[13px] text-[var(--label)] mt-1 leading-[18px]">{error}</p>
+                <pre className="text-[13px] text-[var(--label)] mt-1 leading-[18px] whitespace-pre-wrap font-sans">{error}</pre>
                 {error.includes('AI 设置') || error.includes('配置') ? (
                   <button
                     onClick={onSettings}
@@ -1325,22 +1341,26 @@ function PlanView({
 
       {/* Day Selector */}
       <div className="flex gap-1.5 mb-5 overflow-x-auto pb-1 hide-scrollbar">
-        {weekDays.map((day, i) => {
+        {dayLabels.map((day: any, i: number) => {
           const dayData = weeklyData?.days?.[i];
           const cal = dayData?.calories || 0;
+          const hasData = dayData && dayData.meals && Object.keys(dayData.meals).length > 0;
           return (
             <button
               key={i}
               onClick={() => setSelectedDay(i)}
-              className={`shrink-0 px-3 py-2 rounded-xl text-[12px] font-medium transition-all flex flex-col items-center min-w-[52px] ${
+              className={`shrink-0 px-2.5 py-2 rounded-xl text-[12px] font-medium transition-all flex flex-col items-center min-w-[56px] ${
                 selectedDay === i
                   ? 'bg-[var(--system-green)] text-white'
-                  : 'bg-[var(--secondary-grouped-background)] text-[var(--secondary-label)]'
+                  : hasData
+                    ? 'bg-[var(--secondary-grouped-background)] text-[var(--label)]'
+                    : 'bg-[var(--secondary-grouped-background)]/50 text-[var(--tertiary-label)]'
               }`}
             >
-              <span>{day}</span>
+              <span className="text-[12px]">{day.main}</span>
+              {day.sub && <span className={`text-[10px] opacity-70`}>{day.sub}</span>}
               <span className={`text-[10px] mt-0.5 ${selectedDay === i ? 'text-white/80' : ''}`}>
-                {cal > 0 ? `${Math.round(cal)}` : '—'}
+                {cal > 0 ? `${Math.round(cal)}` : hasData ? '—' : '待生成'}
               </span>
             </button>
           );
@@ -1351,13 +1371,19 @@ function PlanView({
       {currentDay && (
         <div className="bg-[var(--secondary-grouped-background)] rounded-2xl p-4 mb-5 flex items-center justify-between">
           <div>
-            <p className="text-[13px] text-[var(--secondary-label)]">{weekDays[selectedDay]} 总计</p>
+            <p className="text-[13px] text-[var(--secondary-label)]">{dayLabels[selectedDay]?.main || ''} 总计</p>
             <p className="text-[22px] font-bold mt-1">{dayCalories} <span className="text-[13px] font-normal text-[var(--secondary-label)]">kcal</span></p>
           </div>
           <div className="text-right">
             <p className="text-[13px] text-[var(--secondary-label)]">蛋白质</p>
             <p className="text-[22px] font-bold mt-1 text-[var(--system-green)]">{dayProtein} <span className="text-[13px] font-normal">g</span></p>
           </div>
+        </div>
+      )}
+      {!currentDay && weeklyData?.days && weeklyData.days.length > 0 && (
+        <div className="bg-[var(--system-gray5)]/50 rounded-2xl p-4 mb-5 text-center">
+          <p className="text-[13px] text-[var(--secondary-label)]">这天还没有安排</p>
+          <p className="text-[12px] text-[var(--tertiary-label)] mt-1">AI 只生成了 {weeklyData.days.length} 天的食谱</p>
         </div>
       )}
 

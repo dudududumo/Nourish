@@ -154,20 +154,6 @@ function normalizePlan(raw: any): {
   };
 }
 
-function getMonday(date: Date): string {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday
-  d.setDate(diff);
-  return d.toISOString().split('T')[0];
-}
-
-function getSunday(mondayStr: string): string {
-  const d = new Date(mondayStr);
-  d.setDate(d.getDate() + 6);
-  return d.toISOString().split('T')[0];
-}
-
 // Generate weekly plan
 export async function POST(request: Request) {
   const cookieHeader = request.headers.get('cookie');
@@ -185,15 +171,28 @@ export async function POST(request: Request) {
     constraints?: string;
   };
 
-  const monday = getMonday(new Date());
-  const sunday = getSunday(monday);
+  // 从今天开始的 7 天，不强制从周一开始
+  const weekStart = new Date();
+  const weekStartStr = weekStart.toISOString().split('T')[0];
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  const weekEndStr = weekEnd.toISOString().split('T')[0];
 
-  // Build days array for the current week
-  const days: Array<{ date: string; dayOfWeek: number }> = [];
+  const weekdayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+  // Build days array from today
+  const days: Array<{ date: string; dayOfWeek: number; label: string }> = [];
   for (let i = 0; i < 7; i++) {
-    const d = new Date(monday);
+    const d = new Date(weekStart);
     d.setDate(d.getDate() + i);
-    days.push({ date: d.toISOString().split('T')[0], dayOfWeek: i });
+    const jsDay = d.getDay(); // 0=Sunday
+    // 转成我们的 dayOfWeek: 0=周一 ... 6=周日 (兼容现有逻辑)
+    const ourDayOfWeek = jsDay === 0 ? 6 : jsDay - 1;
+    days.push({
+      date: d.toISOString().split('T')[0],
+      dayOfWeek: ourDayOfWeek,
+      label: i === 0 ? '今天' : i === 1 ? '明天' : weekdayNames[jsDay],
+    });
   }
 
   const userPrompt = `用户身体数据：
@@ -208,22 +207,23 @@ ${JSON.stringify(body.foods || [], null, 2)}
 冰箱分区容量：
 ${JSON.stringify(body.zones || [], null, 2)}
 
-本周日期：
-周一：${days[0].date}
-周二：${days[1].date}
-周三：${days[2].date}
-周四：${days[3].date}
-周五：${days[4].date}
-周六：${days[5].date}
-周日：${days[6].date}
+未来 7 天日期（从今天开始）：
+第1天（${days[0].label}）：${days[0].date}
+第2天（${days[1].label}）：${days[1].date}
+第3天（${days[2].label}）：${days[2].date}
+第4天（${days[3].label}）：${days[3].date}
+第5天（${days[4].label}）：${days[4].date}
+第6天（${days[5].label}）：${days[5].date}
+第7天（${days[6].label}）：${days[6].date}
 
 重要提醒：
 1. 先根据身体数据和目标，计算出科学的每日热量和蛋白质目标
 2. 再设计 7 天营养均衡的食谱（优质蛋白+碳水+蔬菜+健康脂肪）
 3. 最后看看冰箱里有什么，能替换的替换，不能替换的就列入采购清单
 4. 绝对不能因为冰箱里食材少就降低营养标准
+5. days 数组必须包含 7 天，对应上面的第1天到第7天
 
-请生成本周（周一到周日）的完整食谱，每天 3 餐，并返回 JSON 格式。同时生成 3-5 条 AI 洞察。`;
+请生成未来 7 天（从今天开始）的完整食谱，每天 3 餐，并返回 JSON 格式。同时生成 3-5 条 AI 洞察。`;
 
   try {
     const response = await fetch(settings.endpoint, {
@@ -247,16 +247,19 @@ ${JSON.stringify(body.zones || [], null, 2)}
     const rawResult = extractJson(content);
     const result = normalizePlan(rawResult);
 
-    // 如果归一化后还是没有 days，返回详细错误信息方便排查
+    // 放宽校验：有几天算几天，至少要有 1 天的数据
     if (!result.plan.days || result.plan.days.length === 0) {
       const rawPreview = JSON.stringify(rawResult).slice(0, 800);
       const normalizedPreview = JSON.stringify(result).slice(0, 500);
       throw new Error(
-        `AI 返回的数据格式不正确：无法提取 7 天食谱。\n` +
+        `AI 返回的数据格式不正确：没有找到任何天的食谱数据。\n` +
         `AI 原始结构：${rawPreview}\n` +
         `归一化后：${normalizedPreview}`
       );
     }
+
+    const actualDays = Math.min(result.plan.days.length, 7);
+    console.log(`[weekly plan] AI 返回了 ${result.plan.days.length} 天数据，使用前 ${actualDays} 天`);
 
     const db = getDb();
     const now = new Date().toISOString();
@@ -269,8 +272,8 @@ ${JSON.stringify(body.zones || [], null, 2)}
     // Insert new weekly plan
     const planResult = await db.insert(weeklyPlans).values({
       userId: user.id,
-      weekStart: monday,
-      weekEnd: sunday,
+      weekStart: weekStartStr,
+      weekEnd: weekEndStr,
       status: 'active',
       goal: result.plan.goal,
       targetCalories: result.plan.targetCalories,
@@ -284,9 +287,10 @@ ${JSON.stringify(body.zones || [], null, 2)}
 
     // Insert daily meals
     // 使用我们自己计算的日期，不依赖 AI 返回的 date / dayOfWeek
+    // 有几天算几天，不强制 7 天
     const allMeals: any[] = [];
     const aiDays = result.plan.days;
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < actualDays; i++) {
       const day = aiDays[i];
       if (!day) {
         console.warn(`[weekly plan] 第 ${i} 天数据缺失，跳过`);
@@ -313,7 +317,7 @@ ${JSON.stringify(body.zones || [], null, 2)}
             planId,
             userId: user.id,
             date: days[i].date,
-            dayOfWeek: i,
+            dayOfWeek: days[i].dayOfWeek,
             mealType: meal.type || 'dinner',
             dishName,
             calories,
