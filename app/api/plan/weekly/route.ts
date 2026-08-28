@@ -4,284 +4,241 @@ import { getDb } from '@/db';
 import { weeklyPlans, dailyMeals, shoppingItems, aiInsights } from '@/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 
-// 非常简单的 system prompt：让 AI 用自然语言输出 7 天食谱
-// 格式越简单，AI 越不容易出错
-const SYSTEM_PROMPT = `你是一位专业营养师。请根据用户的身体数据、目标和冰箱库存，为他/她制定未来 7 天的健康饮食计划。
+const SYSTEM_PROMPT = `你是"轻养"的专业注册营养师，负责为用户制定科学的 7 天健康饮食计划。
 
-要求：
-1. 营养健康第一：每餐有优质蛋白、蔬菜、适量碳水
-2. 冰箱里有的食材优先用，没有的就需要买
-3. 菜品好吃易做，适合小厨房
-4. 每天 3 餐，菜不重样
+【核心原则】
+1. 营养健康第一：严格按身体数据算热量蛋白，每餐优质蛋白+碳水+蔬菜+健康脂肪
+2. 冰箱库存第二：有就优先用，没有就采购，绝不因库存降低营养标准
+3. 每天 3 餐，好吃易做，适合小厨房
 
-请严格按照下面的格式输出，不要加其他内容：
+【输出要求 - 非常重要】
+你必须返回一个合法的 JSON 对象，格式如下：
 
-【本周目标】健康减脂增肌
-【每日热量】约1700千卡，蛋白质约90克
-【方案说明】一句话说明为什么这样安排
-
-【第1天】
-早餐：菜名（主要食材）
-午餐：菜名（主要食材）
-晚餐：菜名（主要食材）
-
-【第2天】
-早餐：菜名（主要食材）
-午餐：菜名（主要食材）
-晚餐：菜名（主要食材）
-
-...以此类推到第7天...
-
-【采购清单】
-食材1 数量
-食材2 数量
-
-【营养师建议】
-1. 建议内容
-2. 建议内容
-3. 建议内容
-
-注意：
-- 严格按照上面的格式，用【】标记每个部分
-- 每天必须有早餐、午餐、晚餐
-- 菜名后面用括号写主要食材
-- 不要用markdown，不要用代码块
-- 直接输出文字即可`;
-
-// 从 AI 返回的文本中解析出结构化的周计划
-function parseWeeklyPlan(text: string): {
-  goal: string;
-  targetCalories: number;
-  targetProtein: number;
-  rationale: string;
-  days: Array<{ breakfast: string; lunch: string; dinner: string }>;
-  shoppingList: Array<{ name: string; amount: string }>;
-  suggestions: string[];
-} {
-  const result = {
-    goal: '健康饮食',
-    targetCalories: 1800,
-    targetProtein: 80,
-    rationale: 'AI 营养师为你制定的个性化饮食计划。',
-    days: [] as Array<{ breakfast: string; lunch: string; dinner: string }>,
-    shoppingList: [] as Array<{ name: string; amount: string }>,
-    suggestions: [] as string[],
-  };
-
-  // 提取目标
-  const goalMatch = text.match(/【本周目标】[：:]?\s*(.+)/);
-  if (goalMatch) result.goal = goalMatch[1].trim();
-
-  // 提取热量和蛋白
-  const calMatch = text.match(/【每日热量】[：:]?\s*约?(\d+)\s*千卡/);
-  if (calMatch) result.targetCalories = parseInt(calMatch[1]);
-  const proteinMatch = text.match(/蛋白质约?(\d+)\s*克/);
-  if (proteinMatch) result.targetProtein = parseInt(proteinMatch[1]);
-
-  // 提取方案说明
-  const rationaleMatch = text.match(/【方案说明】[：:]?\s*(.+?)(?=\n【|$)/s);
-  if (rationaleMatch) result.rationale = rationaleMatch[1].trim();
-
-  // 提取每天的三餐（支持"第X天"格式）
-  const dayRegex = /【第\s*(\d+)\s*天】\s*\n([\s\S]*?)(?=\n【第\s*\d+\s*天】|\n【采购清单】|\n【营养师建议】|$)/g;
-  let dayMatch;
-  while ((dayMatch = dayRegex.exec(text)) !== null) {
-    const dayText = dayMatch[2];
-    const day = { breakfast: '', lunch: '', dinner: '' };
-
-    const b = dayText.match(/早餐[：:]\s*(.+)/);
-    const l = dayText.match(/午餐[：:]\s*(.+)/);
-    const d = dayText.match(/晚餐[：:]\s*(.+)/);
-
-    if (b) day.breakfast = b[1].trim();
-    if (l) day.lunch = l[1].trim();
-    if (d) day.dinner = d[1].trim();
-
-    // 至少要有两餐才算一天
-    if ((b ? 1 : 0) + (l ? 1 : 0) + (d ? 1 : 0) >= 2) {
-      result.days.push(day);
+{
+  "goal": "健康减脂增肌",
+  "targetCalories": 1700,
+  "targetProtein": 90,
+  "rationale": "一句话说明",
+  "days": [
+    {
+      "breakfast": [{"name": "菜名", "calories": 300, "protein": 15, "ingredients": "食材1 100g, 食材2 50g"}],
+      "lunch": [{"name": "菜名", "calories": 500, "protein": 30, "ingredients": "..."}],
+      "dinner": [{"name": "菜名", "calories": 450, "protein": 25, "ingredients": "..."}]
     }
-  }
-
-  // 如果第X天格式没匹配到，试试用"周一/周二..."格式
-  if (result.days.length === 0) {
-    const weekdayRegex = /【?(周[一二三四五六日天])】?\s*\n([\s\S]*?)(?=\n【?周[一二三四五六日天]】?|\n【采购清单】|\n【营养师建议】|$)/g;
-    let wMatch;
-    while ((wMatch = weekdayRegex.exec(text)) !== null) {
-      const dayText = wMatch[2];
-      const day = { breakfast: '', lunch: '', dinner: '' };
-
-      const b = dayText.match(/早餐[：:]\s*(.+)/);
-      const l = dayText.match(/午餐[：:]\s*(.+)/);
-      const d = dayText.match(/晚餐[：:]\s*(.+)/);
-
-      if (b) day.breakfast = b[1].trim();
-      if (l) day.lunch = l[1].trim();
-      if (d) day.dinner = d[1].trim();
-
-      if ((b ? 1 : 0) + (l ? 1 : 0) + (d ? 1 : 0) >= 2) {
-        result.days.push(day);
-      }
-    }
-  }
-
-  // 如果还没有，按数字编号的天来提取（1. xxx / 2. xxx）
-  if (result.days.length === 0) {
-    const numberedDayRegex = /(?:^|\n)(\d+)\.\s*[^\n]*\n([\s\S]*?)(?=(?:^|\n)\d+\.\s*|\n【|$)/g;
-    let nMatch;
-    while ((nMatch = numberedDayRegex.exec(text)) !== null) {
-      const dayText = nMatch[2];
-      const day = { breakfast: '', lunch: '', dinner: '' };
-
-      const b = dayText.match(/早餐[：:]\s*(.+)/);
-      const l = dayText.match(/午餐[：:]\s*(.+)/);
-      const d = dayText.match(/晚餐[：:]\s*(.+)/);
-
-      if (b) day.breakfast = b[1].trim();
-      if (l) day.lunch = l[1].trim();
-      if (d) day.dinner = d[1].trim();
-
-      if ((b ? 1 : 0) + (l ? 1 : 0) + (d ? 1 : 0) >= 2) {
-        result.days.push(day);
-      }
-    }
-  }
-
-  // 提取采购清单
-  const shoppingSection = text.match(/【采购清单】\s*\n([\s\S]*?)(?=\n【营养师建议】|$)/);
-  if (shoppingSection) {
-    const lines = shoppingSection[1].split('\n').filter((l) => l.trim());
-    for (const line of lines) {
-      const trimmed = line.trim().replace(/^[-•*\d.]+\s*/, '');
-      if (!trimmed) continue;
-      // 尝试分离名称和数量
-      const parts = trimmed.split(/\s+(.+)/);
-      if (parts.length >= 2) {
-        result.shoppingList.push({ name: parts[0], amount: parts[1] });
-      } else {
-        result.shoppingList.push({ name: trimmed, amount: '适量' });
-      }
-    }
-  }
-
-  // 提取营养师建议
-  const suggestionSection = text.match(/【营养师建议】\s*\n([\s\S]*?)$/);
-  if (suggestionSection) {
-    const lines = suggestionSection[1].split('\n').filter((l) => l.trim());
-    for (const line of lines) {
-      const trimmed = line.trim().replace(/^[-•*\d.]+\s*/, '');
-      if (trimmed && trimmed.length > 5) {
-        result.suggestions.push(trimmed);
-      }
-    }
-  }
-
-  return result;
+  ],
+  "shoppingList": [{"name": "食材", "amount": "500g"}],
+  "insights": [{"type": "suggestion", "title": "标题", "content": "内容", "priority": 2}]
 }
 
-// 从菜名字符串中提取食材和估算热量
-function parseDish(dishStr: string): { name: string; ingredients: Array<{ name: string; amount: string }>; calories: number; protein: number } {
-  let name = dishStr;
-  let ingredients: Array<{ name: string; amount: string }> = [];
+规则：
+- 只返回 JSON，不要任何解释、不要 markdown、不要代码块
+- days 数组必须有 7 个对象，对应第1天到第7天
+- 每餐是数组，1-2 道菜
+- ingredients 用逗号分隔的字符串就行，不用数组
+- 直接从 { 开始，到 } 结束`;
 
-  // 提取括号里的食材
-  const parenMatch = dishStr.match(/[（(]([^）)]+)[）)]/);
-  if (parenMatch) {
-    name = dishStr.replace(/[（(][^）)]+[）)]/, '').trim();
-    const ingStr = parenMatch[1];
-    const parts = ingStr.split(/[,，、]/);
-    ingredients = parts.map((p) => {
-      const trimmed = p.trim();
-      // 尝试提取数量
-      const amountMatch = trimmed.match(/(\d+\s*g|\d+\s*克|\d+\s*ml|\d+\s*个|\d+\s*只|适量|少许|若干)/);
-      if (amountMatch) {
-        return {
-          name: trimmed.replace(amountMatch[0], '').trim() || trimmed,
-          amount: amountMatch[0],
-        };
+function extractJson(text: string): any {
+  const trimmed = text.trim();
+  if (trimmed.startsWith('{')) {
+    try { return JSON.parse(trimmed); } catch { /* fall through */ }
+  }
+  const codeBlock = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (codeBlock) {
+    try { return JSON.parse(codeBlock[1].trim()); } catch { /* fall through */ }
+  }
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    try { return JSON.parse(trimmed.slice(firstBrace, lastBrace + 1)); } catch { /* fall through */ }
+  }
+  throw new Error(`无法解析 AI 返回的食谱数据。原始内容前500字：${text.slice(0, 500)}`);
+}
+
+// 从自然语言文本中提取菜品（兜底方案，当 JSON 完全解析失败时使用）
+function parseMealsFromText(text: string): any[] {
+  const days: any[] = [];
+  // 按"第X天"或日期分割
+  const dayRegex = /(?:第\s*(\d+)\s*天|Day\s*\d+|周[一二三四五六日])[^\n]*\n([\s\S]*?)(?=(?:第\s*\d+\s*天|Day\s*\d+|周[一二三四五六日]|$))/gi;
+  let match;
+  while ((match = dayRegex.exec(text)) !== null) {
+    const dayText = match[2];
+    const day: any = { breakfast: [], lunch: [], dinner: [] };
+
+    // 提取早餐
+    const breakfastMatch = dayText.match(/(?:早餐|早饭|早)[：:]([^\n]+)/);
+    if (breakfastMatch) day.breakfast.push({ name: breakfastMatch[1].trim(), calories: 0, protein: 0, ingredients: '' });
+
+    // 提取午餐
+    const lunchMatch = dayText.match(/(?:午餐|午饭|中)[：:]([^\n]+)/);
+    if (lunchMatch) day.lunch.push({ name: lunchMatch[1].trim(), calories: 0, protein: 0, ingredients: '' });
+
+    // 提取晚餐
+    const dinnerMatch = dayText.match(/(?:晚餐|晚饭|晚)[：:]([^\n]+)/);
+    if (dinnerMatch) day.dinner.push({ name: dinnerMatch[1].trim(), calories: 0, protein: 0, ingredients: '' });
+
+    // 只要有一餐就保留
+    if (day.breakfast.length > 0 || day.lunch.length > 0 || day.dinner.length > 0) {
+      days.push(day);
+    }
+  }
+
+  // 如果按天分割没找到，尝试从整体文本提取一顿的（至少当 1 天用）
+  if (days.length === 0) {
+    const day: any = { breakfast: [], lunch: [], dinner: [] };
+    const b = text.match(/(?:早餐|早饭)[：:]([^\n]+)/);
+    const l = text.match(/(?:午餐|午饭)[：:]([^\n]+)/);
+    const d = text.match(/(?:晚餐|晚饭)[：:]([^\n]+)/);
+    if (b) day.breakfast.push({ name: b[1].trim(), calories: 0, protein: 0, ingredients: '' });
+    if (l) day.lunch.push({ name: l[1].trim(), calories: 0, protein: 0, ingredients: '' });
+    if (d) day.dinner.push({ name: d[1].trim(), calories: 0, protein: 0, ingredients: '' });
+    if (day.breakfast.length > 0 || day.lunch.length > 0 || day.dinner.length > 0) {
+      days.push(day);
+    }
+  }
+
+  return days;
+}
+
+// 归一化 AI 返回的各种结构，统一成我们期望的格式
+function normalizePlan(raw: any): {
+  plan: { goal: string; targetCalories: number; targetProtein: number; rationale: string; days: any[]; shoppingList: any[] };
+  insights: any[];
+} {
+  // 顶层可能直接就是数据，也可能包了一层 plan
+  const planObj = raw.plan || raw.weekPlan || raw.mealPlan || raw.data || raw;
+
+  // 尝试找到 days 数组
+  let days: any[] = [];
+  if (Array.isArray(planObj.days)) days = planObj.days;
+  else if (Array.isArray(planObj.meals)) days = planObj.meals;
+  else if (Array.isArray(planObj.weeklyMeals)) days = planObj.weeklyMeals;
+  else if (Array.isArray(planObj.schedule)) days = planObj.schedule;
+  else if (Array.isArray(raw.days)) days = raw.days;
+
+  // 归一化每一天的结构：统一转成 { breakfast: [], lunch: [], dinner: [] } 形式
+  const normalizedDays = days.slice(0, 7).map((day: any) => {
+    const result: any = { breakfast: [], lunch: [], dinner: [], snack: [] };
+
+    // 形式1：直接按 mealType 分组的对象（我们推荐的格式）
+    for (const type of ['breakfast', 'lunch', 'dinner', 'snack']) {
+      if (day[type]) {
+        const arr = Array.isArray(day[type]) ? day[type] : [day[type]];
+        result[type] = arr.map((d: any) => typeof d === 'string' ? { name: d, calories: 0, protein: 0, ingredients: '' } : d);
       }
-      return { name: trimmed, amount: '适量' };
-    }).filter((i) => i.name);
-  }
+    }
 
-  // 粗略估算热量（按菜名长度和关键词估算）
-  let calories = 300;
-  let protein = 15;
-  const lower = dishStr.toLowerCase();
-  if (lower.includes('鸡腿') || lower.includes('鸡胸') || lower.includes('牛肉') || lower.includes('虾')) {
-    calories = 400; protein = 30;
-  } else if (lower.includes('蛋') || lower.includes('豆腐')) {
-    calories = 250; protein = 18;
-  } else if (lower.includes('沙拉') || lower.includes('蔬菜')) {
-    calories = 150; protein = 5;
-  }
-  if (lower.includes('饭') || lower.includes('面') || lower.includes('米')) {
-    calories += 150;
-  }
+    // 形式2：meals 数组 + type 字段
+    if (Array.isArray(day.meals) && result.breakfast.length === 0 && result.lunch.length === 0) {
+      for (const meal of day.meals) {
+        const type = meal.type || 'dinner';
+        let dishes: any[] = [];
+        if (Array.isArray(meal.dishes)) dishes = meal.dishes;
+        else if (meal.name) dishes = [meal];
+        if (result[type]) result[type] = [...result[type], ...dishes];
+      }
+    }
 
-  return { name, ingredients, calories, protein };
+    return result;
+  });
+
+  // 归一化购物清单
+  let shoppingList: any[] = [];
+  if (Array.isArray(planObj.shoppingList)) shoppingList = planObj.shoppingList;
+  else if (Array.isArray(planObj.shopping_items)) shoppingList = planObj.shopping_items;
+  else if (Array.isArray(planObj.groceryList)) shoppingList = planObj.groceryList;
+  else if (Array.isArray(raw.shoppingList)) shoppingList = raw.shoppingList;
+
+  // 归一化洞察
+  let insights: any[] = [];
+  if (Array.isArray(raw.insights)) insights = raw.insights;
+  else if (Array.isArray(raw.suggestions)) insights = raw.suggestions.map((s: any) => ({ ...s, type: 'suggestion' }));
+  else if (Array.isArray(planObj.insights)) insights = planObj.insights;
+
+  return {
+    plan: {
+      goal: planObj.goal || planObj.objective || '健康饮食',
+      targetCalories: planObj.targetCalories ?? planObj.dailyCalories ?? planObj.calories ?? 1800,
+      targetProtein: planObj.targetProtein ?? planObj.dailyProtein ?? planObj.protein ?? 80,
+      rationale: planObj.rationale || planObj.explanation || planObj.reason || 'AI 营养师根据你的身体数据和冰箱库存生成的个性化计划。',
+      days: normalizedDays,
+      shoppingList,
+    },
+    insights,
+  };
 }
 
 // Generate weekly plan
 export async function POST(request: Request) {
-  try {
-    const cookieHeader = request.headers.get('cookie');
-    const user = await getCurrentUser(cookieHeader);
-    if (!user) return Response.json({ error: '请先登录。' }, { status: 401 });
+  const cookieHeader = request.headers.get('cookie');
+  const user = await getCurrentUser(cookieHeader);
+  if (!user) return Response.json({ error: '请先登录。' }, { status: 401 });
 
-    const settings = await getAiSettings(user.id);
-    if (!settings) return Response.json({ error: '请先在"营养师 → AI 设置"中配置接口、模型和密钥。' }, { status: 503 });
+  const settings = await getAiSettings(user.id);
+  if (!settings) return Response.json({ error: '请先在"营养师 → AI 设置"中配置接口、模型和密钥。' }, { status: 503 });
 
-    const body = await request.json() as {
-      measurements?: Record<string, string>;
-      zones?: Array<{ id: string; name: string; type: string; capacity: number; used: number }>;
-      foods?: Array<{ name: string; zone: string; amount: string; days: number }>;
-      goal?: string;
-      constraints?: string;
-    };
+  const body = await request.json() as {
+    measurements?: Record<string, string>;
+    zones?: Array<{ id: string; name: string; type: string; capacity: number; used: number }>;
+    foods?: Array<{ name: string; zone: string; amount: string; days: number }>;
+    goal?: string;
+    constraints?: string;
+  };
 
-    // 从今天开始的 7 天
-    const weekStart = new Date();
-    const weekStartStr = weekStart.toISOString().split('T')[0];
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekEnd.getDate() + 6);
-    const weekEndStr = weekEnd.toISOString().split('T')[0];
+  // 从今天开始的 7 天，不强制从周一开始
+  const weekStart = new Date();
+  const weekStartStr = weekStart.toISOString().split('T')[0];
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  const weekEndStr = weekEnd.toISOString().split('T')[0];
 
-    const weekdayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-    const days: Array<{ date: string; dayOfWeek: number; label: string }> = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(weekStart);
-      d.setDate(d.getDate() + i);
-      const jsDay = d.getDay();
-      const ourDayOfWeek = jsDay === 0 ? 6 : jsDay - 1;
-      days.push({
-        date: d.toISOString().split('T')[0],
-        dayOfWeek: ourDayOfWeek,
-        label: i === 0 ? '今天' : i === 1 ? '明天' : weekdayNames[jsDay],
-      });
-    }
+  const weekdayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
-    const userPrompt = `用户身体数据：
+  // Build days array from today
+  const days: Array<{ date: string; dayOfWeek: number; label: string }> = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    const jsDay = d.getDay(); // 0=Sunday
+    // 转成我们的 dayOfWeek: 0=周一 ... 6=周日 (兼容现有逻辑)
+    const ourDayOfWeek = jsDay === 0 ? 6 : jsDay - 1;
+    days.push({
+      date: d.toISOString().split('T')[0],
+      dayOfWeek: ourDayOfWeek,
+      label: i === 0 ? '今天' : i === 1 ? '明天' : weekdayNames[jsDay],
+    });
+  }
+
+  const userPrompt = `用户身体数据：
 ${JSON.stringify(body.measurements || {})}
 
 用户目标：${body.goal || '健康减脂，提升肌肉量'}
 执行条件：${body.constraints || '宿舍环境，小锅，简单易做，好吃不水煮'}
 
-冰箱现有食材（优先使用，没有的就列入采购清单）：
+冰箱现有食材（仅供参考，优先使用但不能牺牲营养均衡）：
 ${JSON.stringify(body.foods || [], null, 2)}
 
-未来 7 天：
-第1天（${days[0].label}，${days[0].date}）
-第2天（${days[1].label}，${days[1].date}）
-第3天（${days[2].label}，${days[2].date}）
-第4天（${days[3].label}，${days[3].date}）
-第5天（${days[4].label}，${days[4].date}）
-第6天（${days[5].label}，${days[5].date}）
-第7天（${days[6].label}，${days[6].date}）
+冰箱分区容量：
+${JSON.stringify(body.zones || [], null, 2)}
 
-请按照规定的格式输出这 7 天的饮食计划。`;
+未来 7 天日期（从今天开始）：
+第1天（${days[0].label}）：${days[0].date}
+第2天（${days[1].label}）：${days[1].date}
+第3天（${days[2].label}）：${days[2].date}
+第4天（${days[3].label}）：${days[3].date}
+第5天（${days[4].label}）：${days[4].date}
+第6天（${days[5].label}）：${days[5].date}
+第7天（${days[6].label}）：${days[6].date}
 
-    // 调用 AI
+重要提醒：
+1. 先根据身体数据和目标，计算出科学的每日热量和蛋白质目标
+2. 再设计 7 天营养均衡的食谱（优质蛋白+碳水+蔬菜+健康脂肪）
+3. 最后看看冰箱里有什么，能替换的替换，不能替换的就列入采购清单
+4. 绝对不能因为冰箱里食材少就降低营养标准
+5. days 数组必须包含 7 天，对应上面的第1天到第7天
+
+请生成未来 7 天（从今天开始）的完整食谱，每天 3 餐，并返回 JSON 格式。同时生成 3-5 条 AI 洞察。`;
+
+  try {
     const response = await fetch(settings.endpoint, {
       method: 'POST',
       headers: { authorization: `Bearer ${settings.apiKey}`, 'content-type': 'application/json' },
@@ -291,144 +248,253 @@ ${JSON.stringify(body.foods || [], null, 2)}
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userPrompt },
         ],
-        temperature: 0.4,
-        max_tokens: 8000,
+        temperature: 0.3,
+        max_tokens: 12000,
       }),
     });
 
     const data = await response.json() as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } };
-    if (!response.ok) {
-      return Response.json({ error: `AI 服务返回错误：${data.error?.message ?? response.statusText}` }, { status: 502 });
-    }
+    if (!response.ok) return Response.json({ error: data.error?.message ?? 'AI 服务暂时不可用。' }, { status: response.status });
 
     const content = data.choices?.[0]?.message?.content ?? '';
-    if (!content) {
-      return Response.json({ error: 'AI 返回了空内容，请稍后再试。' }, { status: 502 });
+
+    // 先尝试 JSON 解析
+    let rawResult: any = null;
+    let parseError = '';
+    try {
+      rawResult = extractJson(content);
+    } catch (e: any) {
+      parseError = e.message;
+      console.warn('[weekly plan] JSON 解析失败，尝试文本兜底解析');
     }
 
-    // 解析文本
-    const parsed = parseWeeklyPlan(content);
-
-    // 至少要有 1 天的数据
-    if (parsed.days.length === 0) {
-      // 如果解析失败，用 AI 原文的前 500 字当错误信息
-      return Response.json({
-        error: `无法解析 AI 返回的食谱格式。AI 返回内容预览：${content.slice(0, 500)}`,
-      }, { status: 500 });
+    let result: any = null;
+    if (rawResult) {
+      result = normalizePlan(rawResult);
     }
 
-    const actualDays = Math.min(parsed.days.length, 7);
-    console.log(`[周计划] 解析成功，共 ${actualDays} 天`);
+    // 如果 JSON 解析后没有 days，尝试从文本提取（兜底方案）
+    if (!result || !result.plan.days || result.plan.days.length === 0) {
+      console.warn('[weekly plan] 结构归一化后没有数据，使用文本兜底解析');
+      const textDays = parseMealsFromText(content);
+      if (textDays.length > 0) {
+        result = {
+          plan: {
+            goal: '健康饮食计划',
+            targetCalories: 1800,
+            targetProtein: 80,
+            rationale: 'AI 营养师根据你的身体数据和冰箱库存生成的个性化计划。',
+            days: textDays,
+            shoppingList: [],
+          },
+          insights: [{
+            type: 'observation',
+            title: '计划已生成',
+            content: `AI 为你生成了 ${textDays.length} 天的饮食计划，可在周计划中查看详情。`,
+            priority: 1,
+          }],
+        };
+      }
+    }
+
+    // 最后校验：还是没有的话报错
+    if (!result || !result.plan.days || result.plan.days.length === 0) {
+      const contentPreview = content.slice(0, 800);
+      throw new Error(
+        `AI 返回的数据无法解析。\n` +
+        `JSON 解析错误：${parseError || '无'}\n` +
+        `AI 返回内容预览：${contentPreview}`
+      );
+    }
+
+    const actualDays = Math.min(result.plan.days.length, 7);
+    console.log(`[weekly plan] AI 返回了 ${result.plan.days.length} 天数据，使用前 ${actualDays} 天`);
 
     const db = getDb();
     const now = new Date().toISOString();
 
-    // 归档之前的活跃计划
+    // Archive previous active plan
     await db.update(weeklyPlans)
       .set({ status: 'archived', updatedAt: now })
       .where(and(eq(weeklyPlans.userId, user.id), eq(weeklyPlans.status, 'active')));
 
-    // 插入新计划
+    // Insert new weekly plan
     const planResult = await db.insert(weeklyPlans).values({
       userId: user.id,
       weekStart: weekStartStr,
       weekEnd: weekEndStr,
       status: 'active',
-      goal: parsed.goal,
-      targetCalories: parsed.targetCalories,
-      targetProtein: parsed.targetProtein,
-      rationale: parsed.rationale,
+      goal: result.plan.goal,
+      targetCalories: result.plan.targetCalories,
+      targetProtein: result.plan.targetProtein,
+      rationale: result.plan.rationale,
       createdAt: now,
       updatedAt: now,
     }).returning({ id: weeklyPlans.id });
 
     const planId = planResult[0].id;
 
-    // 插入每日菜品
+    // Insert daily meals
+    // 使用我们自己计算的日期，不依赖 AI 返回的 date / dayOfWeek
+    // 有几天算几天，不强制 7 天
+    // 支持两种结构：{breakfast: [], lunch: [], dinner: []} 和 {meals: [{type, dishes: []}]}
     const allMeals: any[] = [];
-    const mealTypes = ['breakfast', 'lunch', 'dinner'] as const;
-    const mealLabels: Record<string, string> = { breakfast: '早餐', lunch: '午餐', dinner: '晚餐' };
-
+    const aiDays = result.plan.days;
+    const mealTypes: Array<[string, string]> = [
+      ['breakfast', '早餐'], ['lunch', '午餐'], ['dinner', '晚餐'], ['snack', '加餐'],
+    ];
     for (let i = 0; i < actualDays; i++) {
-      const day = parsed.days[i];
-      if (!day) continue;
+      const day = aiDays[i];
+      if (!day) {
+        console.warn(`[weekly plan] 第 ${i} 天数据缺失，跳过`);
+        continue;
+      }
 
-      for (const mealType of mealTypes) {
-        const dishStr = day[mealType as keyof typeof day];
-        if (!dishStr) continue;
+      // 收集这天所有菜，按 mealType 分组
+      const dishesByType: Record<string, any[]> = {};
 
-        const dish = parseDish(dishStr);
-        allMeals.push({
-          planId,
-          userId: user.id,
-          date: days[i].date,
-          dayOfWeek: days[i].dayOfWeek,
-          mealType,
-          dishName: dish.name || `${mealLabels[mealType]}菜品`,
-          calories: dish.calories,
-          protein: dish.protein,
-          ingredientsJson: JSON.stringify(dish.ingredients),
-          stepsJson: JSON.stringify([]),
-          sortOrder: 0,
-          createdAt: now,
-        });
+      // 结构1：直接按 mealType 分组（推荐格式）
+      for (const [type] of mealTypes) {
+        if (day[type] && Array.isArray(day[type]) && day[type].length > 0) {
+          dishesByType[type] = day[type];
+        }
+      }
+
+      // 结构2：meals 数组形式（兜底）
+      if (Object.keys(dishesByType).length === 0 && Array.isArray(day.meals)) {
+        for (const meal of day.meals) {
+          const type = meal.type || 'dinner';
+          if (meal.dishes && Array.isArray(meal.dishes)) {
+            dishesByType[type] = (dishesByType[type] || []).concat(meal.dishes);
+          } else if (meal.name) {
+            dishesByType[type] = (dishesByType[type] || []).concat([meal]);
+          }
+        }
+      }
+
+      // 写入数据库
+      let sortIdx = 0;
+      for (const [type] of mealTypes) {
+        const dishes = dishesByType[type];
+        if (!dishes || dishes.length === 0) continue;
+        for (const dish of dishes) {
+          const dishName = dish.name || dish.dishName || dish.title || '未知菜品';
+          const calories = dish.calories ?? dish.cal ?? 0;
+          const protein = dish.protein ?? dish.proteinG ?? 0;
+          // ingredients 可能是字符串（逗号分隔）或数组
+          let ingredientsArr: any[] = [];
+          if (typeof dish.ingredients === 'string' && dish.ingredients) {
+            ingredientsArr = dish.ingredients.split(/[,，、]/).map((s: string) => ({
+              name: s.trim(),
+              amount: '',
+              fromFridge: false,
+            })).filter((x: any) => x.name);
+          } else if (Array.isArray(dish.ingredients)) {
+            ingredientsArr = dish.ingredients;
+          }
+          allMeals.push({
+            planId,
+            userId: user.id,
+            date: days[i].date,
+            dayOfWeek: days[i].dayOfWeek,
+            mealType: type,
+            dishName,
+            calories,
+            protein,
+            ingredientsJson: JSON.stringify(ingredientsArr),
+            stepsJson: JSON.stringify(dish.steps || []),
+            sortOrder: sortIdx++,
+            createdAt: now,
+          });
+        }
       }
     }
-
-    let mealsInserted = 0;
-    if (allMeals.length > 0) {
+    const mealsInserted = allMeals.length;
+    if (mealsInserted > 0) {
       await db.insert(dailyMeals).values(allMeals);
-      mealsInserted = allMeals.length;
     }
 
-    // 插入采购清单
+    // Insert shopping items
     let shoppingInserted = 0;
-    if (parsed.shoppingList.length > 0) {
+    if (result.plan.shoppingList && Array.isArray(result.plan.shoppingList) && result.plan.shoppingList.length > 0) {
       await db.insert(shoppingItems).values(
-        parsed.shoppingList.map((item) => ({
+        result.plan.shoppingList.map((item: any) => ({
           planId,
           userId: user.id,
           name: item.name,
           amount: item.amount,
-          reason: '',
+          reason: item.reason,
           purchased: 0,
           createdAt: now,
         }))
       );
-      shoppingInserted = parsed.shoppingList.length;
+      shoppingInserted = result.plan.shoppingList.length;
     }
 
-    // 插入 AI 洞察
+    // Insert AI insights
     let insightsInserted = 0;
-    if (parsed.suggestions.length > 0) {
-      const insightValues = parsed.suggestions.slice(0, 5).map((s, idx) => ({
-        userId: user.id,
-        type: 'suggestion' as const,
-        category: 'nutrition',
-        title: s.length > 20 ? s.slice(0, 20) + '...' : s,
-        content: s,
-        priority: 5 - idx,
-        createdAt: now,
-      }));
-      await db.insert(aiInsights).values(insightValues);
-      insightsInserted = insightValues.length;
+    if (result.insights && Array.isArray(result.insights) && result.insights.length > 0) {
+      await db.insert(aiInsights).values(
+        result.insights.map((ins: any) => ({
+          userId: user.id,
+          type: ins.type || 'suggestion',
+          category: ins.category || 'nutrition',
+          title: ins.title,
+          content: ins.content,
+          priority: ins.priority || 0,
+          relatedPlanId: planId,
+          createdAt: now,
+        }))
+      );
+      insightsInserted = result.insights.length;
     }
 
-    console.log(`[周计划] 写入完成：${mealsInserted} 道菜，${shoppingInserted} 项采购，${insightsInserted} 条建议`);
-
-    return Response.json({
-      planId,
-      weekStart: weekStartStr,
-      weekEnd: weekEndStr,
-      mealsInserted,
-      shoppingInserted,
-      insightsInserted,
-      daysGenerated: actualDays,
-    });
-  } catch (e: any) {
-    console.error('[周计划生成错误]', e);
-    return Response.json({
-      error: `生成失败：${e.message || '未知错误'}`,
-    }, { status: 500 });
+    return Response.json({ planId, weekStart: weekStartStr, weekEnd: weekEndStr, mealsInserted, shoppingInserted, insightsInserted });
+  } catch (e) {
+    const isDev = process.env.NODE_ENV !== 'production';
+    const message = e instanceof Error ? e.message : '生成失败，请稍后再试。';
+    const stack = e instanceof Error ? e.stack : undefined;
+    if (isDev) {
+      console.error('[weekly plan] 生成失败:', message, stack);
+      return Response.json({ error: message, stack }, { status: 502 });
+    }
+    return Response.json({ error: message }, { status: 502 });
   }
+}
+
+// Get current active weekly plan
+export async function GET(request: Request) {
+  const cookieHeader = request.headers.get('cookie');
+  const user = await getCurrentUser(cookieHeader);
+  if (!user) return Response.json({ error: '请先登录。' }, { status: 401 });
+
+  const db = getDb();
+
+  const plan = await db.select()
+    .from(weeklyPlans)
+    .where(and(eq(weeklyPlans.userId, user.id), eq(weeklyPlans.status, 'active')))
+    .orderBy(desc(weeklyPlans.createdAt))
+    .limit(1)
+    .get();
+
+  if (!plan) return Response.json({ plan: null, meals: [], shoppingList: [], insights: [] });
+
+  const meals = await db.select()
+    .from(dailyMeals)
+    .where(eq(dailyMeals.planId, plan.id))
+    .all();
+
+  const shopping = await db.select()
+    .from(shoppingItems)
+    .where(eq(shoppingItems.planId, plan.id))
+    .all();
+
+  const insights = await db.select()
+    .from(aiInsights)
+    .where(and(eq(aiInsights.userId, user.id), eq(aiInsights.relatedPlanId, plan.id)))
+    .orderBy(desc(aiInsights.priority), desc(aiInsights.createdAt))
+    .limit(10)
+    .all();
+
+  return Response.json({ plan, meals, shoppingList: shopping, insights });
 }
