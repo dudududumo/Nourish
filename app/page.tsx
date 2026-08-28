@@ -6,7 +6,7 @@ import {
   Home, Activity, Refrigerator, Bot, ChevronRight,
   Sparkles, TrendingDown, Dumbbell, Archive,
   Flame, Info, Settings, Send, Plus, X,
-  LogOut, User, Loader2,
+  LogOut, User, Loader2, AlertCircle,
 } from 'lucide-react';
 
 type Tab = 'today' | 'body' | 'fridge' | 'coach';
@@ -57,6 +57,7 @@ export default function HomePage() {
   const [prompt, setPrompt] = useState('为什么今天这样安排？');
   const [answer, setAnswer] = useState('');
   const [asking, setAsking] = useState(false);
+  const [aiError, setAiError] = useState('');
   const [fridgeOpen, setFridgeOpen] = useState(false);
 
   // Check auth status
@@ -76,7 +77,7 @@ export default function HomePage() {
 
   async function askCoach(question = prompt) {
     if (!question.trim() || asking) return;
-    setAsking(true); setAnswer(''); setAiOpen(true);
+    setAsking(true); setAnswer(''); setAiError(''); setAiOpen(true);
     try {
       const response = await fetch('/api/coach', {
         method: 'POST',
@@ -92,9 +93,13 @@ export default function HomePage() {
         }),
       });
       const data = await response.json() as { answer?: string; error?: string };
-      setAnswer(data.answer ?? data.error ?? '暂时无法连接营养师，请稍后再试。');
+      if (!response.ok) {
+        setAiError(data.error ?? '暂时无法连接营养师，请稍后再试。');
+      } else {
+        setAnswer(data.answer ?? '');
+      }
     } catch {
-      setAnswer('网络连接失败，请稍后再试。');
+      setAiError('网络连接失败，请稍后再试。');
     } finally {
       setAsking(false);
     }
@@ -180,6 +185,26 @@ export default function HomePage() {
             {asking && (
               <div className="w-fit bg-[var(--secondary-grouped-background)] rounded-full px-4 py-2 text-[13px] text-[var(--secondary-label)] shadow-sm">
                 正在结合你的数据分析…
+              </div>
+            )}
+
+            {aiError && (
+              <div className="bg-[var(--system-orange)]/10 border border-[var(--system-orange)]/20 rounded-2xl px-4 py-3">
+                <div className="flex items-start gap-2.5">
+                  <AlertCircle className="size-5 text-[var(--system-orange)] shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-[14px] font-semibold text-[var(--system-orange)]">暂时无法使用</p>
+                    <p className="text-[13px] text-[var(--label)] mt-1 leading-[18px]">{aiError}</p>
+                    {aiError.includes('AI 设置') || aiError.includes('配置') ? (
+                      <button
+                        onClick={() => { setAiOpen(false); setAiSettingsOpen(true); }}
+                        className="mt-3 text-[13px] font-medium text-[var(--system-blue)]"
+                      >
+                        去配置 →
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
               </div>
             )}
 
