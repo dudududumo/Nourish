@@ -1301,33 +1301,6 @@ function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult, his
         <h1 className="text-large-title">身体数据</h1>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 mb-5">
-        <button
-          className="ios-button bg-[var(--secondary-grouped-background)] text-[var(--label)]"
-          onClick={onAgentAnalyze}
-          disabled={agentAnalyzing}
-        >
-          {agentAnalyzing ? <Loader2 className="size-4 animate-spin" /> : <Zap className="size-4" />}
-          {agentAnalyzing ? 'AI 分析中…' : 'AI 分析数据'}
-        </button>
-        <button
-          className="ios-button bg-[var(--system-green)] text-white"
-          onClick={onGenerate}
-        >
-          <Sparkles className="size-4" />
-          生成周计划
-        </button>
-      </div>
-
-      {/* 上传数据 */}
-      <button
-        onClick={() => setUploadOpen(true)}
-        className="ios-button w-full mb-5 bg-[var(--system-blue)]/5 border border-[var(--system-blue)]/20 text-[var(--system-blue)]"
-      >
-        <Upload className="size-4" />
-        上传数据（手动填写 / 图片解析）
-      </button>
-
       {/* 历史身体洞察（来自小养主动发现，与营养师同步） */}
       {historyInsights.length > 0 && (
         <div className="mb-4">
@@ -1442,6 +1415,33 @@ function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult, his
           ))}
         </div>
       )}
+
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        <button
+          className="ios-button bg-[var(--secondary-grouped-background)] text-[var(--label)]"
+          onClick={onAgentAnalyze}
+          disabled={agentAnalyzing}
+        >
+          {agentAnalyzing ? <Loader2 className="size-4 animate-spin" /> : <Zap className="size-4" />}
+          {agentAnalyzing ? 'AI 分析中…' : 'AI 分析数据'}
+        </button>
+        <button
+          className="ios-button bg-[var(--system-green)] text-white"
+          onClick={onGenerate}
+        >
+          <Sparkles className="size-4" />
+          生成周计划
+        </button>
+      </div>
+
+      {/* 上传数据 */}
+      <button
+        onClick={() => setUploadOpen(true)}
+        className="ios-button w-full mb-5 bg-[var(--system-blue)]/5 border border-[var(--system-blue)]/20 text-[var(--system-blue)]"
+      >
+        <Upload className="size-4" />
+        上传数据（手动填写 / 图片解析）
+      </button>
 
       {/* AI Agent Status */}
       <div className="mb-5 bg-[var(--system-blue)]/5 border border-[var(--system-blue)]/20 rounded-2xl p-3 flex items-center gap-3">
@@ -1737,6 +1737,128 @@ function FridgeView({
         </button>
       </div>
 
+      {/* 历史冰箱洞察（来自小养主动发现，与营养师同步） */}
+      {historyInsights.length > 0 && (
+        <div className="mb-4">
+          <p className="text-[13px] font-semibold text-[var(--secondary-label)] mb-2 flex items-center gap-1.5">
+            <Sparkles className="size-3.5 text-[var(--system-blue)]" /> 小养的冰箱洞察
+          </p>
+          <div className="space-y-2">
+            {historyInsights.slice(0, 6).map((ins) => {
+              const open = expanded === ins.id;
+              return (
+                <button
+                  key={ins.id}
+                  onClick={() => setExpanded(open ? null : ins.id)}
+                  className={`w-full text-left rounded-2xl px-4 py-3 press-effect ${
+                    ins.type === 'warning'
+                      ? 'bg-[var(--system-red)]/8 border border-[var(--system-red)]/18'
+                      : 'bg-[var(--secondary-grouped-background)]'
+                  }`}
+                >
+                  <span className="flex items-center gap-2.5">
+                    {ins.type === 'warning' ? (
+                      <AlertCircle className="size-4 text-[var(--system-red)] shrink-0" />
+                    ) : ins.type === 'suggestion' ? (
+                      <Sparkles className="size-4 text-[var(--system-blue)] shrink-0" />
+                    ) : (
+                      <Info className="size-4 text-[var(--system-green)] shrink-0" />
+                    )}
+                    <span className="flex-1 text-[13px] font-semibold leading-[18px] text-[var(--label)] break-words">{ins.title}</span>
+                    <ChevronDown className={`size-4 text-[var(--tertiary-label)] shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+                  </span>
+                  {open && (
+                    <span className="block mt-2">
+                      <span className="block text-[12px] text-[var(--secondary-label)] leading-[18px] break-words">{ins.content}</span>
+                      <span className="flex gap-2 mt-2.5">
+                        <span
+                          onClick={(e) => { e.stopPropagation(); onInsightRead(ins.id); }}
+                          className="px-3 py-1.5 h-[30px] rounded-full text-[12px] font-medium bg-[var(--system-gray5)] text-[var(--secondary-label)] press-effect cursor-pointer"
+                        >
+                          已读
+                        </span>
+                        {(ins.type === 'suggestion' || ins.type === 'warning') && (
+                          <span
+                            onClick={(e) => { e.stopPropagation(); onInsightAction(ins.id, 'accept'); }}
+                            className="px-3 py-1.5 h-[30px] rounded-full text-[12px] font-semibold bg-[var(--system-green)] text-white press-effect cursor-pointer"
+                          >
+                            去调整
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* AI Analysis Result */}
+      {agentResult && (
+        <div className={`mb-4 rounded-2xl p-3 flex items-start gap-3 ${
+          agentResult.success
+            ? 'bg-[var(--system-green)]/10 border border-[var(--system-green)]/20'
+            : 'bg-[var(--system-orange)]/10 border border-[var(--system-orange)]/20'
+        }`}>
+          {agentResult.success ? (
+            <Sparkles className="size-5 text-[var(--system-green)] shrink-0 mt-0.5" />
+          ) : (
+            <AlertCircle className="size-5 text-[var(--system-orange)] shrink-0 mt-0.5" />
+          )}
+          <p className="text-[12px] leading-[18px] text-[var(--secondary-label)]">
+            {agentResult.message}
+          </p>
+        </div>
+      )}
+
+      {/* In-place AI insights from fridge analysis */}
+      {agentResult?.success && agentResult.insights && agentResult.insights.length > 0 && (
+        <div className="mb-4 space-y-2">
+          {agentResult.insights.map((ins) => (
+            <div
+              key={ins.id}
+              className={`rounded-2xl p-3.5 ${
+                ins.type === 'warning'
+                  ? 'bg-[var(--system-red)]/8 border border-[var(--system-red)]/18'
+                  : ins.type === 'suggestion'
+                    ? 'bg-[var(--system-blue)]/6 border border-[var(--system-blue)]/18'
+                    : 'bg-[var(--secondary-grouped-background)]'
+              }`}
+            >
+              <div className="flex items-start gap-2.5">
+                {ins.type === 'warning' ? (
+                  <AlertCircle className="size-4 text-[var(--system-red)] shrink-0 mt-0.5" />
+                ) : ins.type === 'suggestion' ? (
+                  <Sparkles className="size-4 text-[var(--system-blue)] shrink-0 mt-0.5" />
+                ) : (
+                  <Info className="size-4 text-[var(--system-green)] shrink-0 mt-0.5" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold leading-[18px] text-[var(--label)]">{ins.title}</p>
+                  <p className="text-[12px] text-[var(--secondary-label)] leading-[18px] mt-0.5">{ins.content}</p>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={() => onInsightRead(ins.id)}
+                      className="px-3 py-1.5 rounded-full text-[12px] font-medium bg-[var(--system-gray5)] text-[var(--secondary-label)] press-effect"
+                    >
+                      已读
+                    </button>
+                    <button
+                      onClick={() => onInsightAction(ins.id, 'accept')}
+                      className="px-3 py-1.5 rounded-full text-[12px] font-semibold bg-[var(--system-green)] text-white press-effect"
+                    >
+                      去调整
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* 添加入口 */}
       <SectionTitle eyebrow={`已用 ${used}/${total} L`} title="食材库存" action="添加" onAction={() => setAddOpen(true)} />
 
@@ -1804,128 +1926,6 @@ function FridgeView({
           生成周计划
         </button>
       </div>
-
-      {/* 历史冰箱洞察（来自小养主动发现，与营养师同步） */}
-      {historyInsights.length > 0 && (
-        <div className="mb-4">
-          <p className="text-[13px] font-semibold text-[var(--secondary-label)] mb-2 flex items-center gap-1.5">
-            <Sparkles className="size-3.5 text-[var(--system-blue)]" /> 小养的冰箱洞察
-          </p>
-          <div className="space-y-2">
-            {historyInsights.slice(0, 6).map((ins) => {
-              const open = expanded === ins.id;
-              return (
-                <button
-                  key={ins.id}
-                  onClick={() => setExpanded(open ? null : ins.id)}
-                  className={`w-full text-left rounded-2xl px-4 py-3 press-effect ${
-                    ins.type === 'warning'
-                      ? 'bg-[var(--system-red)]/8 border border-[var(--system-red)]/18'
-                      : 'bg-[var(--secondary-grouped-background)]'
-                  }`}
-                >
-                  <span className="flex items-center gap-2.5">
-                    {ins.type === 'warning' ? (
-                      <AlertCircle className="size-4 text-[var(--system-red)] shrink-0" />
-                    ) : ins.type === 'suggestion' ? (
-                      <Sparkles className="size-4 text-[var(--system-blue)] shrink-0" />
-                    ) : (
-                      <Info className="size-4 text-[var(--system-green)] shrink-0" />
-                    )}
-                    <span className="flex-1 text-[13px] font-semibold leading-[18px] text-[var(--label)] break-words">{ins.title}</span>
-                    <ChevronDown className={`size-4 text-[var(--tertiary-label)] shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
-                  </span>
-                  {open && (
-                    <span className="block mt-2">
-                      <span className="block text-[12px] text-[var(--secondary-label)] leading-[18px] break-words">{ins.content}</span>
-                      <span className="flex gap-2 mt-2.5">
-                        <span
-                          onClick={(e) => { e.stopPropagation(); onInsightRead(ins.id); }}
-                          className="px-3 py-1.5 h-[30px] rounded-full text-[12px] font-medium bg-[var(--system-gray5)] text-[var(--secondary-label)] press-effect cursor-pointer"
-                        >
-                          已读
-                        </span>
-                        {(ins.type === 'suggestion' || ins.type === 'warning') && (
-                          <span
-                            onClick={(e) => { e.stopPropagation(); onInsightAction(ins.id, 'accept'); }}
-                            className="px-3 py-1.5 h-[30px] rounded-full text-[12px] font-semibold bg-[var(--system-green)] text-white press-effect cursor-pointer"
-                          >
-                            去调整
-                          </span>
-                        )}
-                      </span>
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* AI Analysis Result */}
-      {agentResult && (
-        <div className={`mt-4 rounded-2xl p-3 flex items-start gap-3 ${
-          agentResult.success
-            ? 'bg-[var(--system-green)]/10 border border-[var(--system-green)]/20'
-            : 'bg-[var(--system-orange)]/10 border border-[var(--system-orange)]/20'
-        }`}>
-          {agentResult.success ? (
-            <Sparkles className="size-5 text-[var(--system-green)] shrink-0 mt-0.5" />
-          ) : (
-            <AlertCircle className="size-5 text-[var(--system-orange)] shrink-0 mt-0.5" />
-          )}
-          <p className="text-[12px] leading-[18px] text-[var(--secondary-label)]">
-            {agentResult.message}
-          </p>
-        </div>
-      )}
-
-      {/* In-place AI insights from fridge analysis */}
-      {agentResult?.success && agentResult.insights && agentResult.insights.length > 0 && (
-        <div className="mt-3 space-y-2">
-          {agentResult.insights.map((ins) => (
-            <div
-              key={ins.id}
-              className={`rounded-2xl p-3.5 ${
-                ins.type === 'warning'
-                  ? 'bg-[var(--system-red)]/8 border border-[var(--system-red)]/18'
-                  : ins.type === 'suggestion'
-                    ? 'bg-[var(--system-blue)]/6 border border-[var(--system-blue)]/18'
-                    : 'bg-[var(--secondary-grouped-background)]'
-              }`}
-            >
-              <div className="flex items-start gap-2.5">
-                {ins.type === 'warning' ? (
-                  <AlertCircle className="size-4 text-[var(--system-red)] shrink-0 mt-0.5" />
-                ) : ins.type === 'suggestion' ? (
-                  <Sparkles className="size-4 text-[var(--system-blue)] shrink-0 mt-0.5" />
-                ) : (
-                  <Info className="size-4 text-[var(--system-green)] shrink-0 mt-0.5" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold leading-[18px] text-[var(--label)]">{ins.title}</p>
-                  <p className="text-[12px] text-[var(--secondary-label)] leading-[18px] mt-0.5">{ins.content}</p>
-                  <div className="flex gap-2 mt-2">
-                    <button
-                      onClick={() => onInsightRead(ins.id)}
-                      className="px-3 py-1.5 rounded-full text-[12px] font-medium bg-[var(--system-gray5)] text-[var(--secondary-label)] press-effect"
-                    >
-                      已读
-                    </button>
-                    <button
-                      onClick={() => onInsightAction(ins.id, 'accept')}
-                      className="px-3 py-1.5 rounded-full text-[12px] font-semibold bg-[var(--system-green)] text-white press-effect"
-                    >
-                      去调整
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* AI Agent Status */}
       <div className="mt-4 bg-[var(--system-blue)]/5 border border-[var(--system-blue)]/20 rounded-2xl p-3 flex items-center gap-3">
