@@ -51,7 +51,7 @@ const initialZones: Zone[] = [
   { id: 'freezer', name: '冷冻', type: '冷冻', capacity: 45, used: 24, icon: '❄️' },
 ];
 
-const foods = [
+const initialFoods = [
   { name: '鸡腿肉', zone: '冷藏', amount: '460g', days: 2, icon: '🍗', shelf: 0 },
   { name: '小番茄', zone: '冷藏', amount: '320g', days: 3, icon: '🍅', shelf: 0 },
   { name: '虾仁', zone: '冷冻', amount: '300g', days: 24, icon: '🍤', shelf: 1 },
@@ -65,6 +65,7 @@ export default function HomePage() {
   const [tab, setTab] = useState<Tab>('today');
   const [user, setUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [foods, setFoods] = useState(initialFoods);
   const [fridgeSettings, setFridgeSettings] = useState(false);
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -169,6 +170,13 @@ export default function HomePage() {
         insights: todayData.insights.filter((i) => i.id !== id),
       });
     }
+    // 跨页同步：就地分析卡片(冰箱/身体)也一样隐藏
+    if (agentResult?.insights) {
+      setAgentResult({
+        ...agentResult,
+        insights: agentResult.insights.filter((i) => i.id !== id),
+      });
+    }
   }
 
   function handleInsightAction(id: number, action: 'accept' | 'dismiss') {
@@ -184,6 +192,15 @@ export default function HomePage() {
       // 暂不调整：直接标记已读关闭
       markInsightRead(id);
     }
+  }
+
+  function addFood(f: { name: string; amount: string; zone: string; days: number }) {
+    if (!f.name.trim()) return;
+    const zoneName = f.zone === '冷冻' ? '冷冻' : '冷藏';
+    setFoods((prev) => [...prev, { ...f, zone: zoneName, icon: '🥡', shelf: 0 }]);
+    setZones((prev) =>
+      prev.map((z) => (z.name === zoneName ? { ...z, used: Math.min(z.capacity, z.used + 1) } : z))
+    );
   }
 
   async function saveAiConfig() {
@@ -469,8 +486,6 @@ export default function HomePage() {
             onBody={() => setTab('body')}
             onProfile={() => setProfileOpen(true)}
             onShopping={() => setShoppingOpen(true)}
-            onInsightRead={markInsightRead}
-            onInsightAction={handleInsightAction}
           />
         )}
         {tab === 'plan' && (
@@ -506,11 +521,15 @@ export default function HomePage() {
         {tab === 'fridge' && (
           <FridgeView
             zones={zones}
+            foods={foods}
             onSettings={() => setFridgeSettings(true)}
             onGenerate={() => { setTab('plan'); void generateWeeklyPlan(); }}
             onAgentAnalyze={() => triggerAgentAnalysis('fridge', '冰箱库存有更新')}
             agentAnalyzing={agentAnalyzing}
             agentResult={agentResult}
+            onInsightRead={markInsightRead}
+            onInsightAction={handleInsightAction}
+            onAddFood={addFood}
           />
         )}
         {tab === 'body' && (
@@ -519,6 +538,8 @@ export default function HomePage() {
             onAgentAnalyze={() => triggerAgentAnalysis('body', '身体数据有更新')}
             agentAnalyzing={agentAnalyzing}
             agentResult={agentResult}
+            onInsightRead={markInsightRead}
+            onInsightAction={handleInsightAction}
           />
         )}
       </div>
@@ -638,9 +659,10 @@ export default function HomePage() {
                 {shoppingItems.some((i) => i.purchased) && (
                   <button
                     onClick={() => {
-                      // Quick add all purchased to fridge (simulated for now)
+                      // Quick add all purchased to fridge
                       const purchased = shoppingItems.filter((i) => i.purchased);
-                      alert(`已将 ${purchased.length} 项食材添加到冰箱 🎉\n\n（实际入库功能待后端对接，当前为演示）`);
+                      purchased.forEach((p) => addFood({ name: p.name, amount: p.amount, zone: '冷藏', days: 5 }));
+                      alert(`已将 ${purchased.length} 项食材添加到冰箱 🎉`);
                     }}
                     className="text-[12px] font-medium text-[var(--system-green)] flex items-center gap-1"
                   >
@@ -686,9 +708,9 @@ export default function HomePage() {
                         <button
                           onClick={() => {
                             const defaultAmt = item.amount;
-                            const actual = prompt(`输入 ${item.name} 的实际购买数量：`, defaultAmt);
+                            const actual = prompt(`${item.name} 的实际购买数量：`, defaultAmt);
                             if (actual) {
-                              alert(`已将 ${actual} 的 ${item.name} 添加到冰箱 🎉\n\n（实际入库功能待后端对接，当前为演示）`);
+                              addFood({ name: item.name, amount: actual, zone: '冷藏', days: 5 });
                             }
                           }}
                           className="flex-1 text-[12px] py-2 rounded-lg bg-[var(--system-green)]/10 text-[var(--system-green)] font-medium press-effect flex items-center justify-center gap-1"
@@ -760,7 +782,7 @@ export default function HomePage() {
 /* ==================== Today View ==================== */
 
 function TodayView({
-  user, todayData, loading, generating, error, onGenerate, onPlan, onBody, onProfile, onShopping, onInsightRead, onInsightAction,
+  user, todayData, loading, generating, error, onGenerate, onPlan, onBody, onProfile, onShopping,
 }: {
   user: AuthUser;
   todayData: TodayData | null;
@@ -772,8 +794,6 @@ function TodayView({
   onBody: () => void;
   onProfile: () => void;
   onShopping: () => void;
-  onInsightRead: (id: number) => void;
-  onInsightAction: (id: number, action: 'accept' | 'dismiss') => void;
 }) {
   const today = new Date();
   const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][today.getDay()];
@@ -783,7 +803,6 @@ function TodayView({
   const hasPlan = todayData?.hasPlan;
   const [openSteps, setOpenSteps] = useState<string>('');
   const [openIngredients, setOpenIngredients] = useState<string>('');
-  const [expandedInsight, setExpandedInsight] = useState<number | null>(null);
 
   return (
     <div className="max-w-2xl mx-auto px-4 pb-6">
@@ -796,12 +815,6 @@ function TodayView({
           <h1 className="text-large-title">你好，{user.nickname || '轻养用户'}</h1>
         </div>
         <div className="flex gap-2">
-          {todayData?.insights && todayData.insights.length > 0 && (
-            <button className="relative size-10 rounded-full bg-[var(--system-gray5)] flex items-center justify-center press-effect">
-              <Bell className="size-5 text-[var(--label)]" />
-              <span className="absolute top-1.5 right-1.5 size-2 bg-[var(--system-red)] rounded-full" />
-            </button>
-          )}
           <button onClick={onProfile} className="size-10 rounded-full bg-[var(--system-green)]/10 text-[var(--system-green)] flex items-center justify-center press-effect">
             <User className="size-5" />
           </button>
@@ -866,79 +879,6 @@ function TodayView({
               </div>
             </div>
           </div>
-
-          {/* AI Insights */}
-          {todayData.insights.length > 0 && (
-            <div className="mb-5 space-y-2">
-              {todayData.insights.slice(0, 4).map((insight) => {
-                const isActionable = insight.type === 'suggestion' || insight.type === 'warning';
-                const expanded = expandedInsight === insight.id;
-                const unread = !insight.readAt;
-                return (
-                  <div
-                    key={insight.id}
-                    onClick={isActionable ? () => setExpandedInsight(expanded ? null : insight.id) : undefined}
-                    className={`w-full text-left rounded-2xl px-4 py-3 ${
-                      insight.type === 'warning'
-                        ? 'bg-[var(--system-red)]/8 border border-[var(--system-red)]/18'
-                        : insight.type === 'suggestion'
-                          ? 'bg-[var(--system-blue)]/6 border border-[var(--system-blue)]/18'
-                          : 'bg-[var(--secondary-grouped-background)]'
-                    } ${isActionable ? 'cursor-pointer press-effect' : ''}`}
-                  >
-                    <div className="flex items-start gap-2.5">
-                      {insight.type === 'warning' ? (
-                        <AlertCircle className="size-4 text-[var(--system-red)] shrink-0 mt-0.5" />
-                      ) : insight.type === 'suggestion' ? (
-                        <Sparkles className="size-4 text-[var(--system-blue)] shrink-0 mt-0.5" />
-                      ) : (
-                        <Info className="size-4 text-[var(--system-green)] shrink-0 mt-0.5" />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-[13px] font-semibold text-[var(--label)]">{insight.title}</p>
-                          {isActionable && unread && (
-                            <span className="size-1.5 rounded-full bg-[var(--system-green)] shrink-0" />
-                          )}
-                        </div>
-                        <p className={`text-[12px] text-[var(--secondary-label)] mt-0.5 leading-[18px] ${expanded || !isActionable ? '' : 'line-clamp-2'}`}>
-                          {insight.content}
-                        </p>
-                      </div>
-                      {isActionable && (
-                        <ChevronDown className={`size-4 text-[var(--secondary-label)] shrink-0 mt-0.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-                      )}
-                      {!isActionable && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onInsightRead(insight.id); }}
-                          className="shrink-0 mt-0.5 p-0.5 rounded-full text-[var(--tertiary-label)] hover:text-[var(--secondary-label)] press-effect"
-                          aria-label="关闭此条"
-                        >
-                          <X className="size-3.5" />
-                        </button>
-                      )}
-                    </div>
-                    {isActionable && expanded && (
-                      <div className="flex gap-2 mt-3 ml-7">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onInsightAction(insight.id, 'dismiss'); }}
-                          className="flex-1 py-2 rounded-xl text-[13px] font-medium bg-[var(--system-gray5)] text-[var(--secondary-label)] press-effect"
-                        >
-                          暂不调整
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onInsightAction(insight.id, 'accept'); }}
-                          className="flex-1 py-2 rounded-xl text-[13px] font-semibold bg-[var(--system-green)] text-white press-effect"
-                        >
-                          采纳建议
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
 
           {/* Today's Meals */}
           <SectionTitle eyebrow="今日餐桌" title="三餐安排" action="查看全部" onAction={onPlan} />
@@ -1092,11 +1032,13 @@ function TodayView({
 
 /* ==================== Body View ==================== */
 
-function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult }: {
+function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult, onInsightRead, onInsightAction }: {
   onGenerate: () => void;
   onAgentAnalyze: () => void;
   agentAnalyzing: boolean;
-  agentResult: { success: boolean; count?: number; message?: string } | null;
+  agentResult: { success: boolean; count?: number; message?: string; insights?: Insight[] } | null;
+  onInsightRead: (id: number) => void;
+  onInsightAction: (id: number, action: 'accept' | 'dismiss') => void;
 }) {
   return (
     <div className="max-w-2xl mx-auto px-4 pb-6">
@@ -1138,6 +1080,52 @@ function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult }: {
           <p className="text-[12px] leading-[18px] text-[var(--secondary-label)]">
             {agentResult.message}
           </p>
+        </div>
+      )}
+
+      {/* 就地建议卡片 */}
+      {agentResult?.insights && agentResult.insights.length > 0 && (
+        <div className="space-y-2 mb-4">
+          {agentResult.insights.map((ins) => (
+            <div
+              key={ins.id}
+              className={`rounded-2xl px-4 py-3 ${
+                ins.type === 'warning'
+                  ? 'bg-[var(--system-red)]/8 border border-[var(--system-red)]/18'
+                  : ins.type === 'suggestion'
+                    ? 'bg-[var(--system-blue)]/6 border border-[var(--system-blue)]/18'
+                    : 'bg-[var(--secondary-grouped-background)]'
+              }`}
+            >
+              <div className="flex items-start gap-2.5">
+                {ins.type === 'warning' ? (
+                  <AlertCircle className="size-4 text-[var(--system-red)] shrink-0 mt-0.5" />
+                ) : ins.type === 'suggestion' ? (
+                  <Sparkles className="size-4 text-[var(--system-blue)] shrink-0 mt-0.5" />
+                ) : (
+                  <Info className="size-4 text-[var(--system-green)] shrink-0 mt-0.5" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold leading-[18px] text-[var(--label)]">{ins.title}</p>
+                  <p className="text-[12px] text-[var(--secondary-label)] leading-[18px] mt-0.5">{ins.content}</p>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={() => onInsightRead(ins.id)}
+                      className="px-3 py-1.5 rounded-full text-[12px] font-medium bg-[var(--system-gray5)] text-[var(--secondary-label)] press-effect"
+                    >
+                      已读
+                    </button>
+                    <button
+                      onClick={() => onInsightAction(ins.id, 'accept')}
+                      className="px-3 py-1.5 rounded-full text-[12px] font-semibold bg-[var(--system-green)] text-white press-effect"
+                    >
+                      去调整
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -1210,17 +1198,26 @@ function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult }: {
 /* ==================== Fridge View ==================== */
 
 function FridgeView({
-  zones, onSettings, onGenerate, onAgentAnalyze, agentAnalyzing, agentResult,
+  zones, foods, onSettings, onGenerate, onAgentAnalyze, agentAnalyzing, agentResult, onInsightRead, onInsightAction, onAddFood,
 }: {
   zones: Zone[];
+  foods: { name: string; zone: string; amount: string; days: number; icon: string; shelf: number }[];
   onSettings: () => void;
   onGenerate: () => void;
   onAgentAnalyze: () => void;
   agentAnalyzing: boolean;
   agentResult: { success: boolean; count?: number; message?: string; insights?: Insight[] } | null;
+  onInsightRead: (id: number) => void;
+  onInsightAction: (id: number, action: 'accept' | 'dismiss') => void;
+  onAddFood: (f: { name: string; amount: string; zone: string; days: number }) => void;
 }) {
   const total = useMemo(() => zones.reduce((s, z) => s + z.capacity, 0), [zones]);
   const used = useMemo(() => zones.reduce((s, z) => s + z.used, 0), [zones]);
+  const [addOpen, setAddOpen] = useState(false);
+  const [fName, setFName] = useState('');
+  const [fAmount, setFAmount] = useState('');
+  const [fZone, setFZone] = useState('冷藏');
+  const [fDays, setFDays] = useState('5');
 
   return (
     <div className="max-w-2xl mx-auto px-4 pb-6">
@@ -1237,6 +1234,9 @@ function FridgeView({
           设置
         </button>
       </div>
+
+      {/* 添加入口 */}
+      <SectionTitle eyebrow={`已用 ${used}/${total} L`} title="食材库存" action="添加" onAction={() => setAddOpen(true)} />
 
       {/* 分区 + 库存（一排排） */}
       {zones.map((z) => {
@@ -1346,6 +1346,20 @@ function FridgeView({
                 <div className="flex-1 min-w-0">
                   <p className="text-[13px] font-semibold leading-[18px] text-[var(--label)]">{ins.title}</p>
                   <p className="text-[12px] text-[var(--secondary-label)] leading-[18px] mt-0.5">{ins.content}</p>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={() => onInsightRead(ins.id)}
+                      className="px-3 py-1.5 rounded-full text-[12px] font-medium bg-[var(--system-gray5)] text-[var(--secondary-label)] press-effect"
+                    >
+                      已读
+                    </button>
+                    <button
+                      onClick={() => onInsightAction(ins.id, 'accept')}
+                      className="px-3 py-1.5 rounded-full text-[12px] font-semibold bg-[var(--system-green)] text-white press-effect"
+                    >
+                      去调整
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1363,6 +1377,78 @@ function FridgeView({
           AI 营养师 Agent 模式：主动监控冰箱变化，临期食材优先消耗。
         </p>
       </div>
+
+      {/* 添加食材表单 */}
+      <Sheet open={addOpen} onClose={() => setAddOpen(false)}>
+        <div className="space-y-4">
+          <div>
+            <p className="text-[17px] font-semibold text-[var(--label)]">添加食材</p>
+            <p className="text-[13px] text-[var(--secondary-label)] mt-1">录入后自动放进对应分区，供 AI 营养师规划时使用</p>
+          </div>
+
+          <label className="block">
+            <span className="text-[13px] font-medium text-[var(--secondary-label)]">食材名称</span>
+            <input
+              value={fName}
+              onChange={(e) => setFName(e.target.value)}
+              placeholder="如：西兰花"
+              className="mt-1.5 w-full h-10 px-3 rounded-xl bg-[var(--secondary-grouped-background)] text-[15px] text-[var(--label)] placeholder:text-[var(--tertiary-label)] outline-none"
+            />
+          </label>
+
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-[13px] font-medium text-[var(--secondary-label)]">数量</span>
+              <input
+                value={fAmount}
+                onChange={(e) => setFAmount(e.target.value)}
+                placeholder="如：300g"
+                className="mt-1.5 w-full h-10 px-3 rounded-xl bg-[var(--secondary-grouped-background)] text-[15px] text-[var(--label)] placeholder:text-[var(--tertiary-label)] outline-none"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[13px] font-medium text-[var(--secondary-label)]">可存放天数</span>
+              <input
+                value={fDays}
+                onChange={(e) => setFDays(e.target.value)}
+                placeholder="如：5"
+                inputMode="numeric"
+                className="mt-1.5 w-full h-10 px-3 rounded-xl bg-[var(--secondary-grouped-background)] text-[15px] text-[var(--label)] placeholder:text-[var(--tertiary-label)] outline-none"
+              />
+            </label>
+          </div>
+
+          <label className="block">
+            <span className="text-[13px] font-medium text-[var(--secondary-label)]">放入分区</span>
+            <div className="mt-1.5 grid grid-cols-2 gap-2">
+              {['冷藏', '冷冻'].map((z) => (
+                <button
+                  key={z}
+                  onClick={() => setFZone(z)}
+                  className={`h-10 rounded-xl text-[14px] font-medium press-effect ${
+                    fZone === z
+                      ? 'bg-[var(--system-green)] text-white'
+                      : 'bg-[var(--secondary-grouped-background)] text-[var(--secondary-label)]'
+                  }`}
+                >
+                  {z === '冷藏' ? '🧊 冷藏' : '❄️ 冷冻'}
+                </button>
+              ))}
+            </div>
+          </label>
+
+          <button
+            onClick={() => {
+              onAddFood({ name: fName, amount: fAmount || '—', zone: fZone, days: parseInt(fDays || '5', 10) || 5 });
+              setFName(''); setFAmount(''); setFDays('5'); setAddOpen(false);
+            }}
+            disabled={!fName.trim()}
+            className="w-full h-12 rounded-2xl bg-[var(--system-green)] text-white text-[15px] font-semibold press-effect disabled:opacity-40"
+          >
+            加入冰箱
+          </button>
+        </div>
+      </Sheet>
     </div>
   );
 }
