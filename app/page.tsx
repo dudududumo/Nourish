@@ -707,6 +707,7 @@ function TodayView({
 
   const meals = todayData?.today.meals || {};
   const hasPlan = todayData?.hasPlan;
+  const [expandedMeal, setExpandedMeal] = useState<string | null>(null);
 
   return (
     <div className="max-w-2xl mx-auto px-4 pb-6">
@@ -873,35 +874,72 @@ function TodayView({
                       还没有安排
                     </div>
                   ) : (
-                    dishes.map((dish, i) => (
-                      <div key={dish.id || i} className={`px-4 py-3 ${i !== dishes.length - 1 ? 'border-b border-[var(--separator)]' : ''}`}>
-                        <div className="flex items-start justify-between">
-                          <p className="text-[14px] font-medium">{dish.name}</p>
-                          <span className="text-[11px] text-[var(--secondary-label)] shrink-0 ml-2">
-                            {dish.calories} kcal
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {dish.ingredients.slice(0, 4).map((ing) => (
-                            <span
-                              key={ing.name}
-                              className={`text-[10px] px-2 py-0.5 rounded-full ${
-                                ing.fromFridge
-                                  ? 'bg-[var(--system-green)]/10 text-[var(--system-green)]'
-                                  : 'bg-[var(--system-gray5)] text-[var(--secondary-label)]'
-                              }`}
-                            >
-                              {ing.fromFridge && '🧊 '}{ing.name}
+                    dishes.map((dish, i) => {
+                      const isExpanded = expandedMeal === `${mealType}-${dish.id || i}`;
+                      const steps: string[] = dish.steps || [];
+                      return (
+                        <div key={dish.id || i} className={`px-4 py-3 ${i !== dishes.length - 1 ? 'border-b border-[var(--separator)]' : ''}`}>
+                          <button
+                            onClick={() => setExpandedMeal(isExpanded ? null : `${mealType}-${dish.id || i}`)}
+                            className="w-full text-left flex items-start justify-between press-effect"
+                          >
+                            <div className="min-w-0">
+                              <p className="text-[14px] font-semibold flex items-center gap-1.5">
+                                {dish.name}
+                                {dish.sortOrder === 0 && (
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--system-green)]/10 text-[var(--system-green)] shrink-0">主菜</span>
+                                )}
+                              </p>
+                              {steps.length > 0 && (
+                                <p className="text-[11px] text-[var(--system-blue)] mt-0.5">附做法 · 点击展开</p>
+                              )}
+                            </div>
+                            <span className="text-[11px] text-[var(--secondary-label)] shrink-0 ml-2 mt-0.5">
+                              {dish.calories} kcal
                             </span>
-                          ))}
-                          {dish.ingredients.length > 4 && (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--system-gray5)] text-[var(--secondary-label)]">
-                              +{dish.ingredients.length - 4}
-                            </span>
+                          </button>
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {dish.ingredients.slice(0, 4).map((ing) => (
+                              <span
+                                key={ing.name}
+                                className={`text-[10px] px-2 py-0.5 rounded-full ${
+                                  ing.fromFridge
+                                    ? 'bg-[var(--system-green)]/10 text-[var(--system-green)]'
+                                    : 'bg-[var(--system-gray5)] text-[var(--secondary-label)]'
+                                }`}
+                              >
+                                {ing.fromFridge && '🧊 '}{ing.name}
+                              </span>
+                            ))}
+                            {dish.ingredients.length > 4 && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--system-gray5)] text-[var(--secondary-label)]">
+                                +{dish.ingredients.length - 4}
+                              </span>
+                            )}
+                          </div>
+                          {isExpanded && (
+                            <div className="mt-3 pt-3 border-t border-[var(--separator)]">
+                              {steps.length > 0 ? (
+                                <ol className="space-y-1.5">
+                                  {steps.map((s, idx) => (
+                                    <li key={idx} className="flex gap-2 text-[12px] text-[var(--label)] leading-[18px]">
+                                      <span className="shrink-0 size-4 rounded-full bg-[var(--system-green)]/15 text-[var(--system-green)] text-[10px] flex items-center justify-center font-semibold mt-0.5">
+                                        {idx + 1}
+                                      </span>
+                                      <span>{s}</span>
+                                    </li>
+                                  ))}
+                                </ol>
+                              ) : (
+                                <p className="text-[12px] text-[var(--tertiary-label)]">
+                                  暂无做法，可在营养师对话中让 AI 补充详细步骤。
+                                </p>
+                              )}
+                            </div>
                           )}
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               );

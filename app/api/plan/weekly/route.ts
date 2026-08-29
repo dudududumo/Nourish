@@ -21,9 +21,9 @@ const SYSTEM_PROMPT = `你是"轻养"的专业注册营养师，负责为用户�
   "rationale": "一句话说明",
   "days": [
     {
-      "breakfast": [{"name": "菜名", "calories": 300, "protein": 15, "ingredients": "食材1 100g, 食材2 50g"}],
-      "lunch": [{"name": "菜名", "calories": 500, "protein": 30, "ingredients": "..."}],
-      "dinner": [{"name": "菜名", "calories": 450, "protein": 25, "ingredients": "..."}]
+      "breakfast": [{"name": "菜名", "calories": 300, "protein": 15, "ingredients": "食材1 100g, 食材2 50g", "steps": ["步骤1", "步骤2", "步骤3"]}],
+      "lunch": [{"name": "菜名", "calories": 500, "protein": 30, "ingredients": "...", "steps": ["步骤1", "步骤2", "步骤3"]}],
+      "dinner": [{"name": "菜名", "calories": 450, "protein": 25, "ingredients": "...", "steps": ["步骤1", "步骤2", "步骤3"]}]
     }
   ],
   "shoppingList": [{"name": "食材", "amount": "500g"}],
@@ -35,6 +35,7 @@ const SYSTEM_PROMPT = `你是"轻养"的专业注册营养师，负责为用户�
 - days 数组必须有 7 个对象，对应第1天到第7天
 - 每餐是数组，1-2 道菜
 - ingredients 用逗号分隔的字符串就行，不用数组
+- 每道菜的 steps 给 2-4 步简短做法（重要字段，不要遗漏）
 - 直接从 { 开始，到 } 结束`;
 
 function extractJson(text: string): any {
