@@ -114,7 +114,8 @@ export default function HomePage() {
   const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>([]);
   const [shoppingLoading, setShoppingLoading] = useState(false);
   const [agentAnalyzing, setAgentAnalyzing] = useState(false);
-  const [agentResult, setAgentResult] = useState<{ success: boolean; count?: number; message?: string; insights?: Insight[] } | null>(null);
+  const [fridgeResult, setFridgeResult] = useState<{ success: boolean; count?: number; message?: string; insights?: Insight[] } | null>(null);
+  const [bodyResult, setBodyResult] = useState<{ success: boolean; count?: number; message?: string; insights?: Insight[] } | null>(null);
   const [qtyItem, setQtyItem] = useState<{ name: string; amount: string } | null>(null);
   const [qtyAmount, setQtyAmount] = useState('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -200,11 +201,11 @@ export default function HomePage() {
       });
     }
     // 跨页同步：就地分析卡片(冰箱/身体)也一样隐藏
-    if (agentResult?.insights) {
-      setAgentResult({
-        ...agentResult,
-        insights: agentResult.insights.filter((i) => i.id !== id),
-      });
+    if (fridgeResult?.insights) {
+      setFridgeResult({ ...fridgeResult, insights: fridgeResult.insights.filter((i) => i.id !== id) });
+    }
+    if (bodyResult?.insights) {
+      setBodyResult({ ...bodyResult, insights: bodyResult.insights.filter((i) => i.id !== id) });
     }
   }
 
@@ -278,7 +279,9 @@ export default function HomePage() {
   async function triggerAgentAnalysis(triggerType: 'body' | 'fridge' | 'both', changes: string) {
     if (agentAnalyzing) return;
     setAgentAnalyzing(true);
-    setAgentResult(null);
+    // 各自独立，不互相覆盖
+    const setResult = triggerType === 'fridge' ? setFridgeResult : triggerType === 'body' ? setBodyResult : (r: any) => { setFridgeResult(r); setBodyResult(r); };
+    setResult(null);
     try {
       const res = await fetch('/api/agent/analyze', {
         method: 'POST',
@@ -297,12 +300,12 @@ export default function HomePage() {
         const todayRes = await fetch('/api/plan/today');
         const todayData2 = await todayRes.json();
         setTodayData(todayData2);
-        setAgentResult({ success: true, count: data.count, message: `AI 发现了 ${data.count} 条新建议`, insights: data.insights });
+        setResult({ success: true, count: data.count, message: `AI 发现了 ${data.count} 条新建议`, insights: data.insights });
       } else {
-        setAgentResult({ success: false, message: data.error || '分析失败，请稍后再试' });
+        setResult({ success: false, message: data.error || '分析失败，请稍后再试' });
       }
     } catch {
-      setAgentResult({ success: false, message: '网络连接失败，请稍后再试' });
+      setResult({ success: false, message: '网络连接失败，请稍后再试' });
     } finally {
       setAgentAnalyzing(false);
     }
@@ -555,7 +558,7 @@ export default function HomePage() {
             onGenerate={() => { setTab('plan'); void generateWeeklyPlan(); }}
             onAgentAnalyze={() => triggerAgentAnalysis('fridge', '冰箱库存有更新')}
             agentAnalyzing={agentAnalyzing}
-            agentResult={agentResult}
+            agentResult={fridgeResult}
             onInsightRead={markInsightRead}
             onInsightAction={handleInsightAction}
             onAddFood={addFood}
@@ -566,7 +569,7 @@ export default function HomePage() {
             onGenerate={() => { setTab('plan'); void generateWeeklyPlan(); }}
             onAgentAnalyze={() => triggerAgentAnalysis('body', '身体数据有更新')}
             agentAnalyzing={agentAnalyzing}
-            agentResult={agentResult}
+            agentResult={bodyResult}
             onInsightRead={markInsightRead}
             onInsightAction={handleInsightAction}
           />
