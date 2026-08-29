@@ -7,7 +7,7 @@ import {
   Sparkles, TrendingDown, Dumbbell, Archive,
   Flame, Info, Settings, Send, Plus, X,
   LogOut, User, Loader2, AlertCircle,
-  Bell, ChevronDown, ShoppingCart, Zap, Bot,
+  Bell, ChevronDown, ShoppingCart, Zap, Bot, Upload, ImageIcon,
 } from 'lucide-react';
 
 type Tab = 'today' | 'plan' | 'coach' | 'fridge' | 'body';
@@ -45,6 +45,33 @@ const metrics = [
   ['腰臀比', '1.1', '', '建议复测', 'warn'], ['心率', '102', '次/分', '静息时需复测', 'warn'],
   ['身体得分', '80', '分', '整体健康', 'good'], ['身体年龄', '18', '岁', '设备估算', 'normal'],
 ] as const;
+
+// 各指标的标准区间（常规/健康参考，不构成医疗建议）
+type Standard = {
+  low?: number; high?: number;
+  femaleLow?: number; femaleHigh?: number;
+  guide: string; note?: string;
+};
+const STANDARDS: Record<string, Standard> = {
+  BMI: { low: 18.5, high: 23.9, guide: 'BMI = 体重(kg) ÷ 身高(m)²。18.5–23.9 为亚洲成年人正常范围，低于 18.5 偏瘦、24–27.9 超重、≥28 肥胖。' },
+  体脂率: { low: 18, high: 28, femaleLow: 18, femaleHigh: 28, guide: '男性标准 10–18%，女性标准 18–28%。30–35% 为轻度偏高，女性 >35% 肥胖。' },
+  内脏脂肪: { low: 1, high: 9, guide: '<10 为正常，10–14 偏高，≥15 视为较高，内脏脂肪过高与心血管、代谢风险相关。' },
+  肌肉率: { low: 30, high: 40, femaleLow: 30, femaleHigh: 40, guide: '健康成年人肌肉量约为体重的 30–40%（女性偏低、男性偏高），长期久坐易下降。' },
+  体水分: { low: 55, high: 65, femaleLow: 50, femaleHigh: 60, guide: '男性标准约 55–65%，女性约 50–60%。饮水不足或肌肉量偏低时数值下降。' },
+  蛋白质率: { low: 14, high: 17, guide: '正常参考约 14–17%，偏低常见于蛋白质摄入不足或肌肉流失。' },
+  基础代谢: { low: 1100, high: 1500, femaleLow: 1100, femaleHigh: 1400, guide: '指维持生命体征每天消耗的热量(基础值)。女性约 1100–1400 kcal、男性 1400–1700 kcal，具体因人而异。' },
+  腰臀比: { low: 0.75, high: 0.9, femaleLow: 0.75, femaleHigh: 0.85, guide: '腰围÷臀围。男性 >0.90、女性 >0.85 提示向心性肥胖风险增加。' },
+  心率: { low: 60, high: 100, guide: '静息心率成人正常约 60–100 次/分。>100(静息) 为心动过速，长期偏高建议复查。' },
+  身体得分: { low: 70, high: 100, guide: '综合评分，越高代表整体越健康，正常一般 70–100 分。' },
+  骨量: { low: 2, high: 4, guide: '骨量正常参考约男 3–4kg、女 2–3kg，受年龄、激素、运动影响。' },
+  骨盐率: { low: 3, high: 5, guide: '骨盐量占体重百分比，正常约 3–5%，反映骨骼无机盐含量。' },
+  体重: { guide: '体重本身无绝对标准，需结合身高(BMI)与身体成分判断，女性标准体重≈(身高cm−100)×0.9kg。' },
+  脂肪量: { guide: '脂肪量是否正常取决于体脂率，而不只是绝对重量。' },
+  肌肉量: { guide: '骨骼肌+平滑肌等总和，正常约占体重 30–40%，肌肉量高通常代谢更好。' },
+  骨骼肌: { guide: '骨骼肌是维持姿势与运动的主要肌肉，女性约占体重的 25–30%、男性 35–40%。' },
+  去脂体重: { guide: '体重减去脂肪后的重量，由肌肉、骨骼、水分等组成，越高反映瘦体重越多。' },
+  '身体年龄': { guide: '设备根据身体成分估算的生理年龄，低于实际年龄通常代表代谢状态更好。' },
+};
 
 const initialZones: Zone[] = [
   { id: 'fridge', name: '冷藏', type: '冷藏', capacity: 50, used: 32, icon: '🧊' },
@@ -88,6 +115,8 @@ export default function HomePage() {
   const [shoppingLoading, setShoppingLoading] = useState(false);
   const [agentAnalyzing, setAgentAnalyzing] = useState(false);
   const [agentResult, setAgentResult] = useState<{ success: boolean; count?: number; message?: string; insights?: Insight[] } | null>(null);
+  const [qtyItem, setQtyItem] = useState<{ name: string; amount: string } | null>(null);
+  const [qtyAmount, setQtyAmount] = useState('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [pendingAdjustment, setPendingAdjustment] = useState<{ instruction: string; aiPlan?: string } | null>(null);
   const [adjusting, setAdjusting] = useState(false);
@@ -706,13 +735,7 @@ export default function HomePage() {
                     {item.purchased && (
                       <div className="px-4 pb-3 flex gap-2">
                         <button
-                          onClick={() => {
-                            const defaultAmt = item.amount;
-                            const actual = prompt(`${item.name} 的实际购买数量：`, defaultAmt);
-                            if (actual) {
-                              addFood({ name: item.name, amount: actual, zone: '冷藏', days: 5 });
-                            }
-                          }}
+                          onClick={() => { setQtyAmount(item.amount); setQtyItem({ name: item.name, amount: item.amount }); }}
                           className="flex-1 text-[12px] py-2 rounded-lg bg-[var(--system-green)]/10 text-[var(--system-green)] font-medium press-effect flex items-center justify-center gap-1"
                         >
                           <Plus className="size-3.5" />
@@ -736,6 +759,43 @@ export default function HomePage() {
               </div>
             </>
           )}
+        </div>
+      </Sheet>
+
+      {/* 入冰箱数量确认 */}
+      <Sheet open={!!qtyItem} onClose={() => setQtyItem(null)}>
+        <div className="px-4 pb-6 space-y-4">
+          <div>
+            <p className="text-[17px] font-semibold text-[var(--label)]">入冰箱 · {qtyItem?.name}</p>
+            <p className="text-[13px] text-[var(--secondary-label)] mt-1">实际购买的数量可能和清单不同，确认后入库</p>
+          </div>
+          <label className="block">
+            <span className="text-[13px] font-medium text-[var(--secondary-label)]">实际数量</span>
+            <input
+              autoFocus
+              value={qtyAmount}
+              onChange={(e) => setQtyAmount(e.target.value)}
+              placeholder="如：500g"
+              className="mt-1.5 w-full h-11 px-3.5 rounded-xl bg-[var(--secondary-grouped-background)] text-[16px] text-[var(--label)] placeholder:text-[var(--tertiary-label)] outline-none"
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => setQtyItem(null)}
+              className="h-12 rounded-2xl bg-[var(--secondary-grouped-background)] text-[var(--secondary-label)] text-[15px] font-semibold press-effect"
+            >
+              取消
+            </button>
+            <button
+              onClick={() => {
+                if (qtyItem) addFood({ name: qtyItem.name, amount: qtyAmount, zone: '冷藏', days: 5 });
+                setQtyItem(null);
+              }}
+              className="h-12 rounded-2xl bg-[var(--system-green)] text-white text-[15px] font-semibold press-effect"
+            >
+              确认入库
+            </button>
+          </div>
         </div>
       </Sheet>
 
@@ -1040,6 +1100,12 @@ function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult, onI
   onInsightRead: (id: number) => void;
   onInsightAction: (id: number, action: 'accept' | 'dismiss') => void;
 }) {
+  const [selMetric, setSelMetric] = useState<string | null>(null);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadTab, setUploadTab] = useState<'manual' | 'image'>('manual');
+  const [parsing, setParsing] = useState(false);
+  const [upMsg, setUpMsg] = useState('');
+  const [manualBody, setManualBody] = useState<Record<string, string>>({});
   return (
     <div className="max-w-2xl mx-auto px-4 pb-6">
       <div className="pt-2 pb-4">
@@ -1064,6 +1130,15 @@ function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult, onI
           生成周计划
         </button>
       </div>
+
+      {/* 上传数据 */}
+      <button
+        onClick={() => setUploadOpen(true)}
+        className="ios-button w-full mb-5 bg-[var(--system-blue)]/5 border border-[var(--system-blue)]/20 text-[var(--system-blue)]"
+      >
+        <Upload className="size-4" />
+        上传数据（手动填写 / 图片解析）
+      </button>
 
       {/* AI Analysis Result */}
       {agentResult && (
@@ -1179,18 +1254,202 @@ function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult, onI
       </div>
 
       {/* Metrics Grid */}
-      <SectionTitle eyebrow="全部指标" title="详细数据" />
+      <SectionTitle eyebrow="全部指标" title="详细数据（点击查看标准区间）" />
       <div className="grid grid-cols-2 gap-3 mb-5 md:grid-cols-3 lg:grid-cols-6">
         {metrics.map(([name, value, unit, note, status]) => (
-          <MetricCard key={name} name={name} value={value} unit={unit} note={note} status={status as string} />
+          <button key={name} onClick={() => setSelMetric(name)} className="text-left press-effect">
+            <MetricCard name={name} value={manualBody[name] ?? value} unit={unit} note={note} status={status as string} />
+          </button>
         ))}
       </div>
 
       {/* Info Box */}
       <div className="flex gap-3 p-4 bg-[var(--secondary-grouped-background)] rounded-2xl text-[13px] leading-[18px] text-[var(--secondary-label)]">
         <Info className="size-5 shrink-0 text-[var(--system-blue)] mt-0.5" />
-        <p>体脂秤使用生物电阻抗估算；饮水、进食、运动、经期都会改变结果。建议每天在相似条件下测量。</p>
+        <p>体脂秤使用生物电阻抗估算；饮水、进食、运动、经期都会改变结果。建议每天在相似条件下测量。标准区间为常见健康参考，不构成医疗建议。</p>
       </div>
+
+      {/* 指标详情（标准 + 我的区间） */}
+      {(() => {
+        if (!selMetric) return null;
+        const m = metrics.find(([n]) => n === selMetric);
+        if (!m) return null;
+        const [name, defVal, unit, note, status] = m;
+        const value = (manualBody[name] ?? defVal) as string;
+        const std = STANDARDS[name];
+        const num = parseFloat(value);
+        const hasRange = !!std && std.low != null && std.high != null;
+        const pct = hasRange
+          ? Math.min(100, Math.max(0, ((num - std!.low!) / (std!.high! - std!.low!)) * 100))
+          : 50;
+        const statusText = status === 'good' ? '良好' : status === 'warn' ? '需留意' : '标准';
+        return (
+          <Sheet open onClose={() => setSelMetric(null)} title={name}>
+            <div className="px-5 pb-6">
+              <div className="flex items-end justify-between">
+                <div>
+                  <p className="text-[13px] text-[var(--secondary-label)]">你的当前值</p>
+                  <p className="mt-1 text-[40px] font-bold tracking-tight text-[var(--label)]">
+                    {value}<span className="ml-1 text-[18px] font-medium text-[var(--secondary-label)]">{unit}</span>
+                  </p>
+                </div>
+                <span
+                  className={`px-3 py-1 rounded-full text-[12px] font-semibold ${
+                    status === 'warn'
+                      ? 'bg-[var(--system-orange)]/12 text-[var(--system-orange)]'
+                      : status === 'good'
+                        ? 'bg-[var(--system-green)]/12 text-[var(--system-green)]'
+                        : 'bg-[var(--system-blue)]/12 text-[var(--system-blue)]'
+                  }`}
+                >
+                  {statusText}
+                </span>
+              </div>
+
+              {hasRange && (
+                <div className="mt-6">
+                  <div className="flex justify-between text-[12px] text-[var(--secondary-label)] mb-1.5">
+                    <span>{std!.low}{unit}</span>
+                    <span>标准范围</span>
+                    <span>{std!.high}{unit}</span>
+                  </div>
+                  <div className="relative h-2 rounded-full bg-[var(--system-gray5)]">
+                    <div
+                      className="absolute top-0 left-0 h-full rounded-full bg-[var(--system-green)]/70"
+                      style={{ width: '100%' }}
+                    />
+                    <div
+                      className="absolute top-1/2 -translate-y-1/2 size-4 rounded-full border-2 border-white bg-[var(--system-blue)] shadow"
+                      style={{ left: `calc(${pct}% - 8px)` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-[12px] text-[var(--secondary-label)]">
+                    {num < std!.low!
+                      ? `${name} 低于标准下限`
+                      : num > std!.high!
+                        ? `${name} 高于标准上限`
+                        : `${name} 处于标准范围内`}
+                  </p>
+                </div>
+              )}
+
+              <div className="mt-5 rounded-2xl bg-[var(--secondary-grouped-background)] p-4">
+                <p className="text-[13px] font-semibold text-[var(--label)] mb-1.5">参考说明</p>
+                <p className="text-[13px] leading-[21px] text-[var(--secondary-label)]">{std?.guide}</p>
+                {note && (
+                  <p className="mt-2 text-[12px] text-[var(--tertiary-label)]">设备备注：{note}</p>
+                )}
+              </div>
+            </div>
+          </Sheet>
+        );
+      })()}
+
+      {/* 上传数据 */}
+      <Sheet open={uploadOpen} onClose={() => setUploadOpen(false)} title="上传身体数据">
+        <div className="px-4 pb-6">
+          <div className="flex rounded-full bg-[var(--secondary-grouped-background)] p-1 mb-4">
+            {(['manual', 'image'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setUploadTab(t)}
+                className={`flex-1 h-9 rounded-full text-[14px] font-medium press-effect ${
+                  uploadTab === t ? 'bg-[var(--label)] text-[var(--background)]' : 'text-[var(--secondary-label)]'
+                }`}
+              >
+                {t === 'manual' ? '手动填写' : '图片解析'}
+              </button>
+            ))}
+          </div>
+
+          {upMsg && (
+            <p className={`mb-3 text-[13px] rounded-xl px-3 py-2 ${
+              upMsg.startsWith('已')
+                ? 'bg-[var(--system-green)]/10 text-[var(--system-green)]'
+                : 'bg-[var(--system-orange)]/10 text-[var(--system-orange)]'
+            }`}>
+              {upMsg}
+            </p>
+          )}
+
+          {uploadTab === 'manual' ? (
+            <>
+              <div className="bg-[var(--secondary-grouped-background)] rounded-2xl overflow-hidden mb-4">
+                {(['体重', 'BMI', '体脂率', '内脏脂肪', '肌肉率', '基础代谢'] as const).map((f) => (
+                  <label key={f} className="flex items-center gap-3 px-4 py-3 border-b last:border-0 border-[var(--separator)]">
+                    <span className="text-[14px] text-[var(--label)] w-20 shrink-0">{f}</span>
+                    <input
+                      value={manualBody[f] ?? ''}
+                      onChange={(e) => setManualBody((prev) => ({ ...prev, [f]: e.target.value }))}
+                      placeholder="留空则沿用当前值"
+                      inputMode="decimal"
+                      className="flex-1 min-w-0 bg-transparent text-[15px] text-[var(--label)] placeholder:text-[var(--tertiary-label)] outline-none text-right"
+                    />
+                  </label>
+                ))}
+              </div>
+              <button
+                onClick={() => {
+                  setUploadTab('image'); setUpMsg('');
+                }}
+                className="w-full h-12 rounded-2xl bg-[var(--system-green)] text-white text-[15px] font-semibold press-effect"
+              >
+                保存并同步
+              </button>
+              <p className="mt-2 text-[12px] text-[var(--tertiary-label)] text-center">已填写的指标会即时更新上方数值</p>
+            </>
+          ) : (
+            <>
+              <label className="block">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setUpMsg(''); setParsing(true);
+                    const reader = new FileReader();
+                    reader.onload = async () => {
+                      try {
+                        const res = await fetch('/api/body/parse', {
+                          method: 'POST',
+                          headers: { 'content-type': 'application/json' },
+                          body: JSON.stringify({ image: reader.result as string }),
+                        });
+                        const data = await res.json();
+                        if (data.metrics && Object.keys(data.metrics).length) {
+                          setManualBody((prev) => ({ ...prev, ...data.metrics }));
+                          setUpMsg(data.message || '已解析并更新指标 ✨');
+                        } else {
+                          setUpMsg(data.error || '解析失败，请换张清晰的截图或手动填写');
+                        }
+                      } catch {
+                        setUpMsg('解析失败，请换张清晰的截图或手动填写');
+                      } finally {
+                        setParsing(false);
+                        e.target.value = '';
+                      }
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                />
+                <div className={`h-40 rounded-2xl border-2 border-dashed border-[var(--system-gray4)] flex flex-col items-center justify-center gap-2 text-[var(--secondary-label)] mb-4 press-effect ${parsing ? 'opacity-60' : ''}`}>
+                  {parsing ? <Loader2 className="size-6 animate-spin text-[var(--system-green)]" /> : <ImageIcon className="size-6" />}
+                  <span className="text-[14px]">{parsing ? 'AI 正在识别…' : '点击上传体脂秤截图'}</span>
+                  <span className="text-[12px] text-[var(--tertiary-label)]">支持米家 / 华为等体脂秤报告截图</span>
+                </div>
+              </label>
+              <button
+                onClick={() => setUploadOpen(false)}
+                className="w-full h-12 rounded-2xl bg-[var(--secondary-grouped-background)] text-[var(--secondary-label)] text-[15px] font-semibold press-effect"
+              >
+                完成
+              </button>
+            </>
+          )}
+        </div>
+      </Sheet>
     </div>
   );
 }
@@ -1379,63 +1638,58 @@ function FridgeView({
       </div>
 
       {/* 添加食材表单 */}
-      <Sheet open={addOpen} onClose={() => setAddOpen(false)}>
-        <div className="space-y-4">
-          <div>
-            <p className="text-[17px] font-semibold text-[var(--label)]">添加食材</p>
-            <p className="text-[13px] text-[var(--secondary-label)] mt-1">录入后自动放进对应分区，供 AI 营养师规划时使用</p>
-          </div>
+      <Sheet open={addOpen} onClose={() => setAddOpen(false)} title="添加食材">
+        <div className="px-4 pb-6 space-y-4">
+          <p className="text-[13px] text-[var(--secondary-label)] -mt-1">录入后自动放进对应分区，供 AI 营养师规划时使用</p>
 
-          <label className="block">
-            <span className="text-[13px] font-medium text-[var(--secondary-label)]">食材名称</span>
-            <input
-              value={fName}
-              onChange={(e) => setFName(e.target.value)}
-              placeholder="如：西兰花"
-              className="mt-1.5 w-full h-10 px-3 rounded-xl bg-[var(--secondary-grouped-background)] text-[15px] text-[var(--label)] placeholder:text-[var(--tertiary-label)] outline-none"
-            />
-          </label>
-
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="text-[13px] font-medium text-[var(--secondary-label)]">数量</span>
+          <div className="bg-[var(--secondary-grouped-background)] rounded-2xl overflow-hidden">
+            <label className="flex items-center gap-3 px-4 py-3.5 border-b border-[var(--separator)]">
+              <span className="text-[14px] text-[var(--label)] w-16 shrink-0">名称</span>
+              <input
+                value={fName}
+                onChange={(e) => setFName(e.target.value)}
+                placeholder="如：西兰花"
+                className="flex-1 min-w-0 bg-transparent text-[16px] text-[var(--label)] placeholder:text-[var(--tertiary-label)] outline-none text-right"
+              />
+            </label>
+            <label className="flex items-center gap-3 px-4 py-3.5 border-b border-[var(--separator)]">
+              <span className="text-[14px] text-[var(--label)] w-16 shrink-0">数量</span>
               <input
                 value={fAmount}
                 onChange={(e) => setFAmount(e.target.value)}
                 placeholder="如：300g"
-                className="mt-1.5 w-full h-10 px-3 rounded-xl bg-[var(--secondary-grouped-background)] text-[15px] text-[var(--label)] placeholder:text-[var(--tertiary-label)] outline-none"
+                className="flex-1 min-w-0 bg-transparent text-[16px] text-[var(--label)] placeholder:text-[var(--tertiary-label)] outline-none text-right"
               />
             </label>
-            <label className="block">
-              <span className="text-[13px] font-medium text-[var(--secondary-label)]">可存放天数</span>
+            <label className="flex items-center gap-3 px-4 py-3.5 border-b border-[var(--separator)]">
+              <span className="text-[14px] text-[var(--label)] w-16 shrink-0">保鲜</span>
               <input
                 value={fDays}
                 onChange={(e) => setFDays(e.target.value)}
-                placeholder="如：5"
+                placeholder="如 5 天"
                 inputMode="numeric"
-                className="mt-1.5 w-full h-10 px-3 rounded-xl bg-[var(--secondary-grouped-background)] text-[15px] text-[var(--label)] placeholder:text-[var(--tertiary-label)] outline-none"
+                className="flex-1 min-w-0 bg-transparent text-[16px] text-[var(--label)] placeholder:text-[var(--tertiary-label)] outline-none text-right"
               />
             </label>
-          </div>
-
-          <label className="block">
-            <span className="text-[13px] font-medium text-[var(--secondary-label)]">放入分区</span>
-            <div className="mt-1.5 grid grid-cols-2 gap-2">
-              {['冷藏', '冷冻'].map((z) => (
-                <button
-                  key={z}
-                  onClick={() => setFZone(z)}
-                  className={`h-10 rounded-xl text-[14px] font-medium press-effect ${
-                    fZone === z
-                      ? 'bg-[var(--system-green)] text-white'
-                      : 'bg-[var(--secondary-grouped-background)] text-[var(--secondary-label)]'
-                  }`}
-                >
-                  {z === '冷藏' ? '🧊 冷藏' : '❄️ 冷冻'}
-                </button>
-              ))}
+            <div className="flex items-center gap-3 px-4 py-3.5">
+              <span className="text-[14px] text-[var(--label)] w-16 shrink-0">分区</span>
+              <div className="flex-1 flex gap-2">
+                {['冷藏', '冷冻'].map((z) => (
+                  <button
+                    key={z}
+                    onClick={() => setFZone(z)}
+                    className={`flex-1 h-9 rounded-xl text-[14px] font-medium press-effect ${
+                      fZone === z
+                        ? 'bg-[var(--system-green)] text-white'
+                        : 'bg-[var(--system-gray5)] text-[var(--secondary-label)]'
+                    }`}
+                  >
+                    {z === '冷藏' ? '🧊 冷藏' : '❄️ 冷冻'}
+                  </button>
+                ))}
+              </div>
             </div>
-          </label>
+          </div>
 
           <button
             onClick={() => {
