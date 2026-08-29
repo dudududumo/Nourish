@@ -90,6 +90,8 @@ export default function HomePage() {
   const [agentAnalyzing, setAgentAnalyzing] = useState(false);
   const [agentResult, setAgentResult] = useState<{ success: boolean; count?: number; message?: string } | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [pendingAdjustment, setPendingAdjustment] = useState<{ instruction: string } | null>(null);
+  const [adjusting, setAdjusting] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
 
@@ -262,9 +264,15 @@ export default function HomePage() {
     }
   }
 
+  const ADJUST_KEYWORDS = ['调整', '修改', '换掉', '改成', '不要', '不吃', '忌口', '替', '增肌', '减脂', '减重', '控制热量', '减少', '加餐', '热量'];
+  function isAdjustIntent(text: string) {
+    return ADJUST_KEYWORDS.some((k) => text.includes(k));
+  }
+
   async function sendChatMessage() {
     const msg = chatInput.trim();
     if (!msg || chatLoading) return;
+    const wasAdjust = isAdjustIntent(msg);
 
     const now = new Date();
     const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
@@ -304,6 +312,10 @@ export default function HomePage() {
           time: replyTimeStr,
         };
         setChatMessages((prev) => [...prev, aiMsg]);
+        // 用户在提调整需求时，弹出确认调整卡片（点到确认才真正改计划）
+        if (wasAdjust) {
+          setPendingAdjustment({ instruction: msg });
+        }
       } else {
         const errMsg: ChatMessage = {
           id: `a-${Date.now()}`,
@@ -324,6 +336,68 @@ export default function HomePage() {
     } finally {
       setChatLoading(false);
     }
+  }
+
+  async function handleConfirmAdjust() {
+    if (!pendingAdjustment || adjusting) return;
+    setAdjusting(true);
+    const instruction = pendingAdjustment.instruction;
+    const now = new Date();
+    const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+
+    try {
+      const res = await fetch('/api/plan/adjust', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          instruction,
+          context: {
+            measurements: Object.fromEntries(metrics.map(([key, value, unit]) => [key, `${value}${unit}`])),
+            foods,
+            currentPlan: todayData?.plan,
+          },
+        }),
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        // 刷新今日页
+        const todayRes = await fetch('/api/plan/today');
+        const todayData2 = await todayRes.json();
+        setTodayData(todayData2);
+
+        const okMsg: ChatMessage = {
+          id: `sys-${Date.now()}`,
+          role: 'assistant',
+          content: `✅ 已按你的要求调整好今天的安排，首页已同步更新～`,
+          time: timeStr,
+        };
+        setChatMessages((prev) => [...prev, okMsg]);
+        setPendingAdjustment(null);
+      } else {
+        const errMsg: ChatMessage = {
+          id: `sys-${Date.now()}`,
+          role: 'assistant',
+          content: `😕 ${data.error || '调整失败了，稍后再试试吧。'}`,
+          time: timeStr,
+        };
+        setChatMessages((prev) => [...prev, errMsg]);
+      }
+    } catch {
+      const errMsg: ChatMessage = {
+        id: `sys-${Date.now()}`,
+        role: 'assistant',
+        content: '😕 网络好像不太好，调整没能完成，稍后再试。',
+        time: timeStr,
+      };
+      setChatMessages((prev) => [...prev, errMsg]);
+    } finally {
+      setAdjusting(false);
+    }
+  }
+
+  function handleDismissAdjust() {
+    setPendingAdjustment(null);
   }
 
   // Initialize chat with welcome message
@@ -424,6 +498,10 @@ export default function HomePage() {
             onSend={sendChatMessage}
             onSettings={() => setAiSettingsOpen(true)}
             onGenerate={() => { setTab('plan'); void generateWeeklyPlan(); }}
+            onConfirmAdjust={handleConfirmAdjust}
+            onDismissAdjust={handleDismissAdjust}
+            pendingAdjustment={pendingAdjustment}
+            adjusting={adjusting}
             hasPlan={todayData?.hasPlan ?? false}
           />
         )}
@@ -1578,6 +1656,7 @@ function PlanView({
 
 function CoachChatView({
   messages, input, setInput, loading, onSend, onSettings, onGenerate, hasPlan,
+  onConfirmAdjust, onDismissAdjust, pendingAdjustment, adjusting,
 }: {
   messages: ChatMessage[];
   input: string;
@@ -1586,6 +1665,10 @@ function CoachChatView({
   onSend: () => void;
   onSettings: () => void;
   onGenerate: () => void;
+  onConfirmAdjust: () => void;
+  onDismissAdjust: () => void;
+  pendingAdjustment: { instruction: string } | null;
+  adjusting: boolean;
   hasPlan: boolean;
 }) {
   const quickPrompts = [
@@ -1677,6 +1760,44 @@ function CoachChatView({
           </div>
         )}
       </div>
+
+      {/* Pending Adjustment Card */}
+      {pendingAdjustment && (
+        <div className="px-4 pb-2">
+          <div className="bg-[var(--system-blue)]/5 border border-[var(--system-blue)]/25 rounded-2xl p-3.5">
+            <div className="flex items-start gap-2.5">
+              <div className="size-8 rounded-full bg-[var(--system-blue)]/10 flex items-center justify-center shrink-0">
+                <Sparkles className="size-4 text-[var(--system-blue)]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[14px] font-semibold text-[var(--system-blue)]">小养建议调整今天的安排</p>
+                <p className="text-[12px] text-[var(--secondary-label)] leading-[18px] mt-1 line-clamp-2">
+                  「{pendingAdjustment.instruction}」
+                </p>
+                <p className="text-[11px] text-[var(--tertiary-label)] mt-1.5">
+                  确认后我会按你的要求更新「今日」页的食谱
+                </p>
+                <div className="flex gap-2 mt-3">
+                  <button
+                    onClick={onDismissAdjust}
+                    disabled={adjusting}
+                    className="flex-1 py-2 rounded-xl bg-[var(--secondary-grouped-background)] text-[14px] font-medium text-[var(--label)] press-effect disabled:opacity-50"
+                  >
+                    {adjusting ? '调整中…' : '暂不调整'}
+                  </button>
+                  <button
+                    onClick={onConfirmAdjust}
+                    disabled={adjusting}
+                    className="flex-1 py-2 rounded-xl bg-[var(--system-green)] text-[14px] font-semibold text-white press-effect disabled:opacity-60"
+                  >
+                    {adjusting ? '调整中…' : '确认调整'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Quick Prompts */}
       {messages.length <= 1 && !loading && (
