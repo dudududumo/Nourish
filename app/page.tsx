@@ -707,7 +707,7 @@ function TodayView({
 
   const meals = todayData?.today.meals || {};
   const hasPlan = todayData?.hasPlan;
-  const [expandedMeal, setExpandedMeal] = useState<string | null>(null);
+  const [openSteps, setOpenSteps] = useState<string>('');
 
   return (
     <div className="max-w-2xl mx-auto px-4 pb-6">
@@ -875,29 +875,17 @@ function TodayView({
                     </div>
                   ) : (
                     dishes.map((dish, i) => {
-                      const isExpanded = expandedMeal === `${mealType}-${dish.id || i}`;
-                      const steps: string[] = dish.steps || [];
+                      const dishKey = `${mealType}-${i}`;
+                      const isOpen = openSteps === dishKey;
+                      const hasSteps = dish.steps && dish.steps.length > 0;
                       return (
-                        <div key={dish.id || i} className={`px-4 py-3 ${i !== dishes.length - 1 ? 'border-b border-[var(--separator)]' : ''}`}>
-                          <button
-                            onClick={() => setExpandedMeal(isExpanded ? null : `${mealType}-${dish.id || i}`)}
-                            className="w-full text-left flex items-start justify-between press-effect"
-                          >
-                            <div className="min-w-0">
-                              <p className="text-[14px] font-semibold flex items-center gap-1.5">
-                                {dish.name}
-                                {dish.sortOrder === 0 && (
-                                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--system-green)]/10 text-[var(--system-green)] shrink-0">主菜</span>
-                                )}
-                              </p>
-                              {steps.length > 0 && (
-                                <p className="text-[11px] text-[var(--system-blue)] mt-0.5">附做法 · 点击展开</p>
-                              )}
-                            </div>
-                            <span className="text-[11px] text-[var(--secondary-label)] shrink-0 ml-2 mt-0.5">
+                        <div key={dish.id || dishKey} className={`px-4 py-3 ${i !== dishes.length - 1 ? 'border-b border-[var(--separator)]' : ''}`}>
+                          <div className="flex items-start justify-between">
+                            <p className="text-[14px] font-medium">{dish.name}</p>
+                            <span className="text-[11px] text-[var(--secondary-label)] shrink-0 ml-2">
                               {dish.calories} kcal
                             </span>
-                          </button>
+                          </div>
                           <div className="flex flex-wrap gap-1 mt-2">
                             {dish.ingredients.slice(0, 4).map((ing) => (
                               <span
@@ -917,22 +905,39 @@ function TodayView({
                               </span>
                             )}
                           </div>
-                          {isExpanded && (
+                          {hasSteps ? (
+                            <button
+                              onClick={() => setOpenSteps(isOpen ? '' : dishKey)}
+                              className="mt-2.5 text-[12px] font-medium text-[var(--system-green)] press-effect flex items-center gap-1"
+                            >
+                              {isOpen ? '收起做法' : '查看做法'}
+                              <ChevronDown className={`size-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => setOpenSteps(isOpen ? '' : dishKey)}
+                              className="mt-2.5 text-[12px] font-medium text-[var(--system-blue)] press-effect flex items-center gap-1"
+                            >
+                              {isOpen ? '收起' : '查看做法'}
+                              <ChevronDown className={`size-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                          )}
+                          {isOpen && (
                             <div className="mt-3 pt-3 border-t border-[var(--separator)]">
-                              {steps.length > 0 ? (
-                                <ol className="space-y-1.5">
-                                  {steps.map((s, idx) => (
-                                    <li key={idx} className="flex gap-2 text-[12px] text-[var(--label)] leading-[18px]">
-                                      <span className="shrink-0 size-4 rounded-full bg-[var(--system-green)]/15 text-[var(--system-green)] text-[10px] flex items-center justify-center font-semibold mt-0.5">
-                                        {idx + 1}
+                              {hasSteps ? (
+                                <ol className="space-y-2">
+                                  {dish.steps!.map((step, si) => (
+                                    <li key={si} className="flex gap-2.5 text-[13px] leading-[20px]">
+                                      <span className="shrink-0 w-5 h-5 rounded-full bg-[var(--system-green)]/10 text-[var(--system-green)] text-[11px] font-semibold flex items-center justify-center mt-0.5">
+                                        {si + 1}
                                       </span>
-                                      <span>{s}</span>
+                                      <span className="text-[var(--label)]">{step}</span>
                                     </li>
                                   ))}
                                 </ol>
                               ) : (
-                                <p className="text-[12px] text-[var(--tertiary-label)]">
-                                  暂无做法，可在营养师对话中让 AI 补充详细步骤。
+                                <p className="text-[13px] text-[var(--secondary-label)]">
+                                  这道菜还没有做法记录，点右侧「重新生成」让 AI 补充详细做法。
                                 </p>
                               )}
                             </div>
