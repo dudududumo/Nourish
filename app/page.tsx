@@ -90,7 +90,7 @@ export default function HomePage() {
   const [agentAnalyzing, setAgentAnalyzing] = useState(false);
   const [agentResult, setAgentResult] = useState<{ success: boolean; count?: number; message?: string; insights?: Insight[] } | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [pendingAdjustment, setPendingAdjustment] = useState<{ instruction: string } | null>(null);
+  const [pendingAdjustment, setPendingAdjustment] = useState<{ instruction: string; aiPlan?: string } | null>(null);
   const [adjusting, setAdjusting] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
@@ -314,7 +314,7 @@ export default function HomePage() {
         setChatMessages((prev) => [...prev, aiMsg]);
         // 用户在提调整需求时，弹出确认调整卡片（点到确认才真正改计划）
         if (wasAdjust) {
-          setPendingAdjustment({ instruction: msg });
+          setPendingAdjustment({ instruction: msg, aiPlan: data.reply || '' });
         }
       } else {
         const errMsg: ChatMessage = {
@@ -1713,7 +1713,7 @@ function CoachChatView({
   onGenerate: () => void;
   onConfirmAdjust: () => void;
   onDismissAdjust: () => void;
-  pendingAdjustment: { instruction: string } | null;
+  pendingAdjustment: { instruction: string; aiPlan?: string } | null;
   adjusting: boolean;
   hasPlan: boolean;
 }) {
@@ -1817,11 +1817,15 @@ function CoachChatView({
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-[14px] font-semibold text-[var(--system-blue)]">小养建议调整今天的安排</p>
-                <p className="text-[12px] text-[var(--secondary-label)] leading-[18px] mt-1 line-clamp-2">
-                  「{pendingAdjustment.instruction}」
-                </p>
-                <p className="text-[11px] text-[var(--tertiary-label)] mt-1.5">
-                  确认后我会按你的要求更新「今日」页的食谱
+                <p className="text-[11px] text-[var(--tertiary-label)] mt-0.5">你的需求：{pendingAdjustment.instruction}</p>
+                <div className="mt-2 rounded-xl bg-[var(--secondary-grouped-background)] p-3">
+                  <p className="text-[12px] font-semibold text-[var(--label)] mb-1">将怎么调整</p>
+                  <p className="text-[12px] text-[var(--secondary-label)] leading-[19px] line-clamp-4 whitespace-pre-line">
+                    {pendingAdjustment.aiPlan || 'AI 将根据你的新要求重新安排今天的早午晚餐。'}
+                  </p>
+                </div>
+                <p className="text-[11px] text-[var(--tertiary-label)] mt-2">
+                  确认后更新「今日」页食谱
                 </p>
                 <div className="flex gap-2 mt-3">
                   <button
