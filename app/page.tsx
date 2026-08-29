@@ -254,6 +254,8 @@ export default function HomePage() {
     setZones((prev) =>
       prev.map((z) => (z.name === zoneName ? { ...z, used: Math.min(z.capacity, z.used + 1) } : z))
     );
+    // 冰箱数据更新，Agent 主动触发库存洞察
+    void silentAnalyze('fridge', `冰箱新增食材：${f.name}（${f.amount || '若干'}，放入${zoneName}）`);
   }
 
   async function saveAiConfig() {
@@ -277,6 +279,23 @@ export default function HomePage() {
     } finally {
       setShoppingLoading(false);
     }
+  }
+
+  // 静默分析：数据更新时由 Agent 主动触发，只写入 DB，不打扰用户
+  async function silentAnalyze(triggerType: 'body' | 'fridge' | 'both', changes: string) {
+    try {
+      await fetch('/api/agent/analyze', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          triggerType,
+          changes,
+          measurements: Object.fromEntries(metrics.map(([key, value, unit]) => [key, `${value}${unit}`])),
+          foods,
+          zones,
+        }),
+      });
+    } catch { /* 静默失败，不打断用户 */ }
   }
 
   async function toggleShoppingItem(id: number, purchased: boolean) {
@@ -513,6 +532,19 @@ export default function HomePage() {
         .catch(() => setFridgeHistory([]));
     }
   }, [tab, bodyHistory, fridgeHistory]);
+
+  // 每日主动洞察：进入「今日」时若当天尚未生成，静默让 Agent 分析一次
+  useEffect(() => {
+    if (tab === 'today' && user && todayData !== null) {
+      const today = new Date().toISOString().split('T')[0];
+      try {
+        if (localStorage.getItem('dailyAnalyze') !== today) {
+          localStorage.setItem('dailyAnalyze', today);
+          void silentAnalyze('both', '每日例行洞察：基于当前身体数据与冰箱库存，主动发现健康或营养问题');
+        }
+      } catch { /* ignore */ }
+    }
+  }, [tab, user, todayData]);
 
   // 加载历史洞察
   useEffect(() => {
@@ -1248,6 +1280,7 @@ function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult, his
   onInsightAction: (id: number, action: 'accept' | 'dismiss') => void;
 }) {
   const [selMetric, setSelMetric] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<number | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadTab, setUploadTab] = useState<'manual' | 'image'>('manual');
   const [parsing, setParsing] = useState(false);
@@ -1588,13 +1621,15 @@ function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult, his
               </div>
               <button
                 onClick={() => {
-                  setUploadTab('image'); setUpMsg('');
+                  setUploadOpen(false); setUpMsg('');
+                  // 身体数据更新，Agent 主动触发身体洞察
+                  onAgentAnalyze();
                 }}
                 className="w-full h-12 rounded-2xl bg-[var(--system-green)] text-white text-[15px] font-semibold press-effect"
               >
                 保存并同步
               </button>
-              <p className="mt-2 text-[12px] text-[var(--tertiary-label)] text-center">已填写的指标会即时更新上方数值</p>
+              <p className="mt-2 text-[12px] text-[var(--tertiary-label)] text-center">已填写的指标会即时更新上方数值，并触发营养师主动分析</p>
             </>
           ) : (
             <>
@@ -1676,6 +1711,7 @@ function FridgeView({
   const [fAmount, setFAmount] = useState('');
   const [fZone, setFZone] = useState('冷藏');
   const [fDays, setFDays] = useState('5');
+  const [expanded, setExpanded] = useState<number | null>(null);
 
   return (
     <div className="max-w-2xl mx-auto px-4 pb-6">
@@ -1768,46 +1804,53 @@ function FridgeView({
             <Sparkles className="size-3.5 text-[var(--system-blue)]" /> 小养的冰箱洞察
           </p>
           <div className="space-y-2">
-            {historyInsights.slice(0, 6).map((ins) => (
-              <div
-                key={ins.id}
-                className={`rounded-2xl px-4 py-3 ${
-                  ins.type === 'warning'
-                    ? 'bg-[var(--system-red)]/8 border border-[var(--system-red)]/18'
-                    : 'bg-[var(--secondary-grouped-background)]'
-                }`}
-              >
-                <div className="flex items-start gap-2.5">
-                  {ins.type === 'warning' ? (
-                    <AlertCircle className="size-4 text-[var(--system-red)] shrink-0 mt-0.5" />
-                  ) : ins.type === 'suggestion' ? (
-                    <Sparkles className="size-4 text-[var(--system-blue)] shrink-0 mt-0.5" />
-                  ) : (
-                    <Info className="size-4 text-[var(--system-green)] shrink-0 mt-0.5" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-semibold leading-[18px] text-[var(--label)]">{ins.title}</p>
-                    <p className="text-[12px] text-[var(--secondary-label)] leading-[18px] mt-0.5">{ins.content}</p>
-                    <div className="flex gap-2 mt-2">
-                      <button
-                        onClick={() => onInsightRead(ins.id)}
-                        className="px-3 py-1.5 rounded-full text-[12px] font-medium bg-[var(--system-gray5)] text-[var(--secondary-label)] press-effect"
-                      >
-                        已读
-                      </button>
-                      {(ins.type === 'suggestion' || ins.type === 'warning') && (
-                        <button
-                          onClick={() => onInsightAction(ins.id, 'accept')}
-                          className="px-3 py-1.5 rounded-full text-[12px] font-semibold bg-[var(--system-green)] text-white press-effect"
+            {historyInsights.slice(0, 6).map((ins) => {
+              const open = expanded === ins.id;
+              return (
+                <button
+                  key={ins.id}
+                  onClick={() => setExpanded(open ? null : ins.id)}
+                  className={`w-full text-left rounded-2xl px-4 py-3 press-effect ${
+                    ins.type === 'warning'
+                      ? 'bg-[var(--system-red)]/8 border border-[var(--system-red)]/18'
+                      : 'bg-[var(--secondary-grouped-background)]'
+                  }`}
+                >
+                  <span className="flex items-center gap-2.5">
+                    {ins.type === 'warning' ? (
+                      <AlertCircle className="size-4 text-[var(--system-red)] shrink-0" />
+                    ) : ins.type === 'suggestion' ? (
+                      <Sparkles className="size-4 text-[var(--system-blue)] shrink-0" />
+                    ) : (
+                      <Info className="size-4 text-[var(--system-green)] shrink-0" />
+                    )}
+                    <span className="flex-1 text-[13px] font-semibold leading-[18px] text-[var(--label)] break-words">{ins.title}</span>
+                    <ChevronDown className={`size-4 text-[var(--tertiary-label)] shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+                  </span>
+                  {open && (
+                    <span className="block mt-2">
+                      <span className="block text-[12px] text-[var(--secondary-label)] leading-[18px] break-words">{ins.content}</span>
+                      <span className="flex gap-2 mt-2.5">
+                        <span
+                          onClick={(e) => { e.stopPropagation(); onInsightRead(ins.id); }}
+                          className="px-3 py-1.5 h-[30px] rounded-full text-[12px] font-medium bg-[var(--system-gray5)] text-[var(--secondary-label)] press-effect cursor-pointer"
                         >
-                          去调整
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
+                          已读
+                        </span>
+                        {(ins.type === 'suggestion' || ins.type === 'warning') && (
+                          <span
+                            onClick={(e) => { e.stopPropagation(); onInsightAction(ins.id, 'accept'); }}
+                            className="px-3 py-1.5 h-[30px] rounded-full text-[12px] font-semibold bg-[var(--system-green)] text-white press-effect cursor-pointer"
+                          >
+                            去调整
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
