@@ -88,7 +88,7 @@ export default function HomePage() {
   const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>([]);
   const [shoppingLoading, setShoppingLoading] = useState(false);
   const [agentAnalyzing, setAgentAnalyzing] = useState(false);
-  const [agentResult, setAgentResult] = useState<{ success: boolean; count?: number; message?: string } | null>(null);
+  const [agentResult, setAgentResult] = useState<{ success: boolean; count?: number; message?: string; insights?: Insight[] } | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [pendingAdjustment, setPendingAdjustment] = useState<{ instruction: string } | null>(null);
   const [adjusting, setAdjusting] = useState(false);
@@ -253,7 +253,7 @@ export default function HomePage() {
         const todayRes = await fetch('/api/plan/today');
         const todayData2 = await todayRes.json();
         setTodayData(todayData2);
-        setAgentResult({ success: true, count: data.count, message: `AI 发现了 ${data.count} 条新建议，已推送到今日页` });
+        setAgentResult({ success: true, count: data.count, message: `AI 发现了 ${data.count} 条新建议`, insights: data.insights });
       } else {
         setAgentResult({ success: false, message: data.error || '分析失败，请稍后再试' });
       }
@@ -787,6 +787,7 @@ function TodayView({
   const hasPlan = todayData?.hasPlan;
   const [openSteps, setOpenSteps] = useState<string>('');
   const [openIngredients, setOpenIngredients] = useState<string>('');
+  const [expandedInsight, setExpandedInsight] = useState<number | null>(null);
 
   return (
     <div className="max-w-2xl mx-auto px-4 pb-6">
@@ -873,45 +874,58 @@ function TodayView({
           {/* AI Insights */}
           {todayData.insights.length > 0 && (
             <div className="mb-5 space-y-2">
-              {todayData.insights.slice(0, 3).map((insight) => {
+              {todayData.insights.slice(0, 4).map((insight) => {
                 const isActionable = insight.type === 'suggestion' || insight.type === 'warning';
+                const expanded = expandedInsight === insight.id;
+                const unread = !insight.readAt;
                 return (
                   <div
                     key={insight.id}
-                    className={`w-full text-left rounded-2xl p-4 ${
+                    onClick={isActionable ? () => setExpandedInsight(expanded ? null : insight.id) : undefined}
+                    className={`w-full text-left rounded-2xl px-4 py-3 ${
                       insight.type === 'warning'
-                        ? 'bg-[var(--system-red)]/10 border border-[var(--system-red)]/20'
+                        ? 'bg-[var(--system-red)]/8 border border-[var(--system-red)]/18'
                         : insight.type === 'suggestion'
-                          ? 'bg-[var(--system-blue)]/10 border border-[var(--system-blue)]/20'
+                          ? 'bg-[var(--system-blue)]/6 border border-[var(--system-blue)]/18'
                           : 'bg-[var(--secondary-grouped-background)]'
-                    }`}
+                    } ${isActionable ? 'cursor-pointer press-effect' : ''}`}
                   >
-                    <div className="flex items-start gap-3">
+                    <div className="flex items-start gap-2.5">
                       {insight.type === 'warning' ? (
-                        <AlertCircle className="size-5 text-[var(--system-red)] shrink-0 mt-0.5" />
+                        <AlertCircle className="size-4 text-[var(--system-red)] shrink-0 mt-0.5" />
                       ) : insight.type === 'suggestion' ? (
-                        <Sparkles className="size-5 text-[var(--system-blue)] shrink-0 mt-0.5" />
+                        <Sparkles className="size-4 text-[var(--system-blue)] shrink-0 mt-0.5" />
                       ) : (
-                        <Info className="size-5 text-[var(--system-green)] shrink-0 mt-0.5" />
+                        <Info className="size-4 text-[var(--system-green)] shrink-0 mt-0.5" />
                       )}
                       <div className="flex-1 min-w-0">
-                        <p className="text-[14px] font-semibold">{insight.title}</p>
-                        <p className="text-[12px] text-[var(--secondary-label)] mt-1 leading-[18px]">{insight.content}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-[13px] font-semibold text-[var(--label)]">{insight.title}</p>
+                          {isActionable && unread && (
+                            <span className="size-1.5 rounded-full bg-[var(--system-green)] shrink-0" />
+                          )}
+                        </div>
+                        <p className={`text-[12px] text-[var(--secondary-label)] mt-0.5 leading-[18px] ${expanded || !isActionable ? '' : 'line-clamp-2'}`}>
+                          {insight.content}
+                        </p>
                       </div>
+                      {isActionable && (
+                        <ChevronDown className={`size-4 text-[var(--secondary-label)] shrink-0 mt-0.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                      )}
                     </div>
-                    {isActionable && (
-                      <div className="flex gap-2 mt-3 ml-8">
+                    {isActionable && expanded && (
+                      <div className="flex gap-2 mt-3 ml-7">
                         <button
-                          onClick={() => onInsightAction(insight.id, 'accept')}
-                          className="flex-1 py-2 rounded-xl text-[13px] font-medium bg-[var(--system-green)] text-white press-effect"
-                        >
-                          采纳建议
-                        </button>
-                        <button
-                          onClick={() => onInsightAction(insight.id, 'dismiss')}
+                          onClick={(e) => { e.stopPropagation(); onInsightAction(insight.id, 'dismiss'); }}
                           className="flex-1 py-2 rounded-xl text-[13px] font-medium bg-[var(--system-gray5)] text-[var(--secondary-label)] press-effect"
                         >
                           暂不调整
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onInsightAction(insight.id, 'accept'); }}
+                          className="flex-1 py-2 rounded-xl text-[13px] font-semibold bg-[var(--system-green)] text-white press-effect"
+                        >
+                          采纳建议
                         </button>
                       </div>
                     )}
@@ -1332,6 +1346,38 @@ function FridgeView({
           <p className="text-[12px] leading-[18px] text-[var(--secondary-label)]">
             {agentResult.message}
           </p>
+        </div>
+      )}
+
+      {/* In-place AI insights from fridge analysis */}
+      {agentResult?.success && agentResult.insights && agentResult.insights.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {agentResult.insights.map((ins) => (
+            <div
+              key={ins.id}
+              className={`rounded-2xl p-3.5 ${
+                ins.type === 'warning'
+                  ? 'bg-[var(--system-red)]/8 border border-[var(--system-red)]/18'
+                  : ins.type === 'suggestion'
+                    ? 'bg-[var(--system-blue)]/6 border border-[var(--system-blue)]/18'
+                    : 'bg-[var(--secondary-grouped-background)]'
+              }`}
+            >
+              <div className="flex items-start gap-2.5">
+                {ins.type === 'warning' ? (
+                  <AlertCircle className="size-4 text-[var(--system-red)] shrink-0 mt-0.5" />
+                ) : ins.type === 'suggestion' ? (
+                  <Sparkles className="size-4 text-[var(--system-blue)] shrink-0 mt-0.5" />
+                ) : (
+                  <Info className="size-4 text-[var(--system-green)] shrink-0 mt-0.5" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold leading-[18px] text-[var(--label)]">{ins.title}</p>
+                  <p className="text-[12px] text-[var(--secondary-label)] leading-[18px] mt-0.5">{ins.content}</p>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

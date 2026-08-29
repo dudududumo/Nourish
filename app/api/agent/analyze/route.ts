@@ -142,9 +142,10 @@ ${JSON.stringify(body.zones, null, 2)}` : ''}
     const db = getDb();
     const now = new Date().toISOString();
 
-    // Insert AI insights into database
-    const inserted = await db.insert(aiInsights).values(
-      insights.map((ins: Insight) => ({
+    // Insert AI insights into database（逐条插入，绕开批量插入 autoIncrement 主键为 null 的 bug）
+    const inserted: any[] = [];
+    for (const ins of insights) {
+      const row = await db.insert(aiInsights).values({
         userId: user.id,
         type: ins.type || 'suggestion',
         category: ins.category || 'nutrition',
@@ -152,8 +153,9 @@ ${JSON.stringify(body.zones, null, 2)}` : ''}
         content: ins.content,
         priority: ins.priority || 0,
         createdAt: now,
-      }))
-    ).returning();
+      }).returning();
+      if (row[0]) inserted.push(row[0]);
+    }
 
     return Response.json({ insights: inserted, count: inserted.length });
   } catch (e) {
