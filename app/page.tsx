@@ -126,7 +126,9 @@ export default function HomePage() {
   const [shoppingOpen, setShoppingOpen] = useState(false);
   const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>([]);
   const [shoppingLoading, setShoppingLoading] = useState(false);
-  const [agentAnalyzing, setAgentAnalyzing] = useState(false);
+  const [bodyAnalyzing, setBodyAnalyzing] = useState(false);
+  const [fridgeAnalyzing, setFridgeAnalyzing] = useState(false);
+  const loadingRef = useRef<Set<string>>(new Set());
   const [fridgeResult, setFridgeResult] = useState<{ success: boolean; count?: number; message?: string; insights?: Insight[] } | null>(null);
   const [bodyResult, setBodyResult] = useState<{ success: boolean; count?: number; message?: string; insights?: Insight[] } | null>(null);
   const [qtyItem, setQtyItem] = useState<{ name: string; amount: string } | null>(null);
@@ -326,11 +328,14 @@ export default function HomePage() {
   }
 
   async function triggerAgentAnalysis(triggerType: 'body' | 'fridge' | 'both', changes: string) {
-    if (agentAnalyzing) return;
-    setAgentAnalyzing(true);
+    // 各自独立的 loading，互不干扰
+    const setLoading = triggerType === 'fridge' ? setFridgeAnalyzing : setBodyAnalyzing;
+    if (loadingRef.current.has(triggerType === 'fridge' ? 'fridge' : triggerType === 'body' ? 'body' : 'body')) return;
+    loadingRef.current.add(triggerType === 'fridge' ? 'fridge' : 'body');
     // 各自独立，不互相覆盖
     const setResult = triggerType === 'fridge' ? setFridgeResult : triggerType === 'body' ? setBodyResult : (r: any) => { setFridgeResult(r); setBodyResult(r); };
     setResult(null);
+    setLoading(true);
     try {
       const res = await fetch('/api/agent/analyze', {
         method: 'POST',
@@ -357,7 +362,8 @@ export default function HomePage() {
     } catch {
       setResult({ success: false, message: '网络连接失败，请稍后再试' });
     } finally {
-      setAgentAnalyzing(false);
+      setLoading(false);
+      loadingRef.current.delete(triggerType === 'fridge' ? 'fridge' : 'body');
     }
   }
 
@@ -719,7 +725,7 @@ export default function HomePage() {
             onSettings={() => setFridgeSettings(true)}
             onGenerate={() => { setTab('plan'); void generateWeeklyPlan(); }}
             onAgentAnalyze={() => triggerAgentAnalysis('fridge', '冰箱库存有更新')}
-            agentAnalyzing={agentAnalyzing}
+            agentAnalyzing={fridgeAnalyzing}
             agentResult={fridgeResult}
               historyInsights={fridgeHistory ?? []}
             onInsightRead={markInsightRead}
@@ -731,7 +737,7 @@ export default function HomePage() {
           <BodyView
             onGenerate={() => { setTab('plan'); void generateWeeklyPlan(); }}
             onAgentAnalyze={() => triggerAgentAnalysis('body', '身体数据有更新')}
-            agentAnalyzing={agentAnalyzing}
+            agentAnalyzing={bodyAnalyzing}
             agentResult={bodyResult}
             historyInsights={bodyHistory ?? []}
             onInsightRead={markInsightRead}
@@ -1370,51 +1376,7 @@ function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult, his
         </div>
       )}
 
-      {/* 就地建议卡片 */}
-      {agentResult?.insights && agentResult.insights.length > 0 && (
-        <div className="space-y-2 mb-4">
-          {agentResult.insights.map((ins) => (
-            <div
-              key={ins.id}
-              className={`rounded-2xl px-4 py-3 ${
-                ins.type === 'warning'
-                  ? 'bg-[var(--system-red)]/8 border border-[var(--system-red)]/18'
-                  : ins.type === 'suggestion'
-                    ? 'bg-[var(--system-blue)]/6 border border-[var(--system-blue)]/18'
-                    : 'bg-[var(--secondary-grouped-background)]'
-              }`}
-            >
-              <div className="flex items-start gap-2.5">
-                {ins.type === 'warning' ? (
-                  <AlertCircle className="size-4 text-[var(--system-red)] shrink-0 mt-0.5" />
-                ) : ins.type === 'suggestion' ? (
-                  <Sparkles className="size-4 text-[var(--system-blue)] shrink-0 mt-0.5" />
-                ) : (
-                  <Info className="size-4 text-[var(--system-green)] shrink-0 mt-0.5" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold leading-[18px] text-[var(--label)]">{ins.title}</p>
-                  <p className="text-[12px] text-[var(--secondary-label)] leading-[18px] mt-0.5">{ins.content}</p>
-                  <div className="flex gap-2 mt-2">
-                    <button
-                      onClick={() => onInsightRead(ins.id)}
-                      className="px-3 py-1.5 rounded-full text-[12px] font-medium bg-[var(--system-gray5)] text-[var(--secondary-label)] press-effect"
-                    >
-                      已读
-                    </button>
-                    <button
-                      onClick={() => onInsightAction(ins.id, 'accept')}
-                      className="px-3 py-1.5 rounded-full text-[12px] font-semibold bg-[var(--system-green)] text-white press-effect"
-                    >
-                      去调整
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* 就地建议卡片 end（历史洞察区已承载，且分析后自动刷新，避免重复） */}
 
       <div className="grid grid-cols-2 gap-3 mb-5">
         <button
@@ -1813,51 +1775,7 @@ function FridgeView({
         </div>
       )}
 
-      {/* In-place AI insights from fridge analysis */}
-      {agentResult?.success && agentResult.insights && agentResult.insights.length > 0 && (
-        <div className="mb-4 space-y-2">
-          {agentResult.insights.map((ins) => (
-            <div
-              key={ins.id}
-              className={`rounded-2xl p-3.5 ${
-                ins.type === 'warning'
-                  ? 'bg-[var(--system-red)]/8 border border-[var(--system-red)]/18'
-                  : ins.type === 'suggestion'
-                    ? 'bg-[var(--system-blue)]/6 border border-[var(--system-blue)]/18'
-                    : 'bg-[var(--secondary-grouped-background)]'
-              }`}
-            >
-              <div className="flex items-start gap-2.5">
-                {ins.type === 'warning' ? (
-                  <AlertCircle className="size-4 text-[var(--system-red)] shrink-0 mt-0.5" />
-                ) : ins.type === 'suggestion' ? (
-                  <Sparkles className="size-4 text-[var(--system-blue)] shrink-0 mt-0.5" />
-                ) : (
-                  <Info className="size-4 text-[var(--system-green)] shrink-0 mt-0.5" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold leading-[18px] text-[var(--label)]">{ins.title}</p>
-                  <p className="text-[12px] text-[var(--secondary-label)] leading-[18px] mt-0.5">{ins.content}</p>
-                  <div className="flex gap-2 mt-2">
-                    <button
-                      onClick={() => onInsightRead(ins.id)}
-                      className="px-3 py-1.5 rounded-full text-[12px] font-medium bg-[var(--system-gray5)] text-[var(--secondary-label)] press-effect"
-                    >
-                      已读
-                    </button>
-                    <button
-                      onClick={() => onInsightAction(ins.id, 'accept')}
-                      className="px-3 py-1.5 rounded-full text-[12px] font-semibold bg-[var(--system-green)] text-white press-effect"
-                    >
-                      去调整
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* In-place AI insights from fridge analysis end（历史洞察区承载，避免重复） */}
 
       {/* 添加入口 */}
       <SectionTitle eyebrow={`已用 ${used}/${total} L`} title="食材库存" action="添加" onAction={() => setAddOpen(true)} />
