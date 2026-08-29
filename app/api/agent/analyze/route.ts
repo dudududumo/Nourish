@@ -2,13 +2,14 @@ import { getCurrentUser } from '@/lib/auth';
 import { getAiSettings } from '@/lib/ai-settings';
 import { getDb } from '@/db';
 import { aiInsights } from '@/db/schema';
+import { eq, and, inArray } from 'drizzle-orm';
 
 const SYSTEM_PROMPT = `你是"轻养"的 AI 营养师 Agent，主动监控用户的身体数据和冰箱变化。当检测到变化时，主动分析并给出个性化的洞察建议。
 
 核心规则：
 1. 必须返回严格的 JSON 格式，不能有任何 Markdown、解释文字或额外内容。
 2. 洞察要具体、可操作，不要空泛的套话。
-3. 生成 2-4 条洞察，每条都要有明确的类型和优先级。
+3. 只生成 3-5 条最有分量的洞察，宁缺毋滥，不要凑数。优先选真正值得用户注意的：健康风险、趋势异常、临期风险。
 4. 优先关注：体重趋势、体脂变化、临期食材、营养均衡。
 
 洞察类型说明：
@@ -106,8 +107,9 @@ ${JSON.stringify(body.foods, null, 2)}` : ''}${body.zones ? `
 冰箱分区容量：
 ${JSON.stringify(body.zones, null, 2)}` : ''}
 
-请根据以上变化数据，主动分析并生成 2-4 条个性化洞察建议。
+请根据以上变化数据，主动分析并生成 3-5 条最有含金量的洞察建议。
 要求：
+- 只保留最值得注意的 3-5 条，不凑数
 - 洞察要具体、有数据支撑、可操作
 - 优先关注：体重趋势、体脂变化、临期食材、营养均衡
 - 类型合理分配（观察/建议/警示）
@@ -141,6 +143,15 @@ ${JSON.stringify(body.zones, null, 2)}` : ''}
 
     const db = getDb();
     const now = new Date().toISOString();
+
+    // 覆盖旧洞察：冰箱分析只保留本次冰箱类，身体分析只保留本次身体类，每日(both)清空重来
+    if (body.triggerType === 'fridge') {
+      await db.delete(aiInsights).where(and(eq(aiInsights.userId, user.id), eq(aiInsights.category, 'fridge')));
+    } else if (body.triggerType === 'body') {
+      await db.delete(aiInsights).where(and(eq(aiInsights.userId, user.id), inArray(aiInsights.category, ['body', 'nutrition', 'habit'])));
+    } else if (body.triggerType === 'both') {
+      await db.delete(aiInsights).where(eq(aiInsights.userId, user.id));
+    }
 
     // Insert AI insights into database（逐条插入，绕开批量插入 autoIncrement 主键为 null 的 bug）
     // 按触发源强制归类：冰箱分析→fridge，身体分析→body，让洞察与来源可靠同步

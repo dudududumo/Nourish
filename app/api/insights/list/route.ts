@@ -1,9 +1,9 @@
 import { getCurrentUser } from '@/lib/auth';
 import { getDb } from '@/db';
 import { aiInsights } from '@/db/schema';
-import { eq, desc, and } from 'drizzle-orm';
+import { eq, desc, and, isNull, or } from 'drizzle-orm';
 
-// scope=all 返回全部；body 只返回身体类；fridge 只返回冰箱类
+// 只返回未读洞察；scope=all 全部未读，body 只身体类，fridge 只冰箱类
 export async function GET(request: Request) {
   const cookieHeader = request.headers.get('cookie');
   const user = await getCurrentUser(cookieHeader);
@@ -13,7 +13,10 @@ export async function GET(request: Request) {
 
   try {
     const db = getDb();
-    const conds = [eq(aiInsights.userId, user.id)];
+    const conds: ReturnType<typeof eq>[] = [
+      eq(aiInsights.userId, user.id),
+      or(isNull(aiInsights.readAt), eq(aiInsights.readAt, ''))!,
+    ];
     if (scope === 'body') {
       conds.push(eq(aiInsights.category, 'body'));
     } else if (scope === 'fridge') {

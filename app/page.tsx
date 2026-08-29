@@ -298,6 +298,13 @@ export default function HomePage() {
     } catch { /* 静默失败，不打断用户 */ }
   }
 
+  // 刷新三处洞察列表（分析覆盖后丢弃旧数据）
+  function refreshInsightLists() {
+    void fetch('/api/insights/list').then((r) => r.json()).then((d: { insights?: Insight[] }) => setSavedInsights(d.insights ?? [])).catch(() => {});
+    void fetch('/api/insights/list?scope=body').then((r) => r.json()).then((d: { insights?: Insight[] }) => setBodyHistory(d.insights ?? [])).catch(() => {});
+    void fetch('/api/insights/list?scope=fridge').then((r) => r.json()).then((d: { insights?: Insight[] }) => setFridgeHistory(d.insights ?? [])).catch(() => {});
+  }
+
   async function toggleShoppingItem(id: number, purchased: boolean) {
     setShoppingItems((prev) => prev.map((item) => item.id === id ? { ...item, purchased } : item));
     await fetch('/api/shopping', {
@@ -343,6 +350,7 @@ export default function HomePage() {
         const todayData2 = await todayRes.json();
         setTodayData(todayData2);
         setResult({ success: true, count: data.count, message: `AI 发现了 ${data.count} 条新建议`, insights: data.insights });
+        refreshInsightLists();
       } else {
         setResult({ success: false, message: data.error || '分析失败，请稍后再试' });
       }
