@@ -912,6 +912,15 @@ function TodayView({
                       {isActionable && (
                         <ChevronDown className={`size-4 text-[var(--secondary-label)] shrink-0 mt-0.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
                       )}
+                      {!isActionable && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onInsightRead(insight.id); }}
+                          className="shrink-0 mt-0.5 p-0.5 rounded-full text-[var(--tertiary-label)] hover:text-[var(--secondary-label)] press-effect"
+                          aria-label="关闭此条"
+                        >
+                          <X className="size-3.5" />
+                        </button>
+                      )}
                     </div>
                     {isActionable && expanded && (
                       <div className="flex gap-2 mt-3 ml-7">
