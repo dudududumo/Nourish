@@ -1311,49 +1311,58 @@ function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult, his
       {historyInsights.length > 0 && (
         <div className="mb-4">
           <p className="text-[13px] font-semibold text-[var(--secondary-label)] mb-2 flex items-center gap-1.5">
-            <Sparkles className="size-3.5 text-[var(--system-blue)]" /> 小养的身体洞察
+            <Sparkles className="size-3.5 text-[var(--system-blue)] shrink-0" /> 小养的身体洞察
+            {historyInsights.find((i) => i.type === 'observation') && (
+              <span className="ml-1 flex-1 text-[12px] font-medium text-[var(--secondary-label)] truncate">
+                {historyInsights.find((i) => i.type === 'observation')?.title}
+                <span className="text-[var(--system-pink)]"> ♥</span>
+              </span>
+            )}
           </p>
           <div className="space-y-2">
-            {historyInsights.slice(0, 6).map((ins) => (
-              <div
-                key={ins.id}
-                className={`rounded-2xl px-4 py-3 ${
-                  ins.type === 'warning'
-                    ? 'bg-[var(--system-red)]/8 border border-[var(--system-red)]/18'
-                    : 'bg-[var(--secondary-grouped-background)]'
-                }`}
-              >
-                <div className="flex items-start gap-2.5">
-                  {ins.type === 'warning' ? (
-                    <AlertCircle className="size-4 text-[var(--system-red)] shrink-0 mt-0.5" />
-                  ) : ins.type === 'suggestion' ? (
-                    <Sparkles className="size-4 text-[var(--system-blue)] shrink-0 mt-0.5" />
-                  ) : (
-                    <Info className="size-4 text-[var(--system-green)] shrink-0 mt-0.5" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-semibold leading-[18px] text-[var(--label)]">{ins.title}</p>
-                    <p className="text-[12px] text-[var(--secondary-label)] leading-[18px] mt-0.5">{ins.content}</p>
-                    <div className="flex gap-2 mt-2">
-                      <button
-                        onClick={() => onInsightRead(ins.id)}
-                        className="px-3 py-1.5 rounded-full text-[12px] font-medium bg-[var(--system-gray5)] text-[var(--secondary-label)] press-effect"
-                      >
-                        已读
-                      </button>
-                      {(ins.type === 'suggestion' || ins.type === 'warning') && (
-                        <button
-                          onClick={() => onInsightAction(ins.id, 'accept')}
-                          className="px-3 py-1.5 rounded-full text-[12px] font-semibold bg-[var(--system-green)] text-white press-effect"
+            {historyInsights.filter((i) => i.type !== 'observation').slice(0, 6).map((ins) => {
+              const open = expanded === ins.id;
+              return (
+                <button
+                  key={ins.id}
+                  onClick={() => setExpanded(open ? null : ins.id)}
+                  className={`w-full text-left rounded-2xl px-4 py-3 press-effect ${
+                    ins.type === 'warning'
+                      ? 'bg-[var(--system-red)]/8 border border-[var(--system-red)]/18'
+                      : 'bg-[var(--secondary-grouped-background)]'
+                  }`}
+                >
+                  <span className="flex items-center gap-2.5">
+                    {ins.type === 'warning' ? (
+                      <AlertCircle className="size-4 text-[var(--system-red)] shrink-0" />
+                    ) : (
+                      <Sparkles className="size-4 text-[var(--system-blue)] shrink-0" />
+                    )}
+                    <span className="flex-1 text-[13px] font-semibold leading-[18px] text-[var(--label)] break-words">{ins.title}</span>
+                    <ChevronDown className={`size-4 text-[var(--tertiary-label)] shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+                  </span>
+                  {open && (
+                    <span className="block mt-2">
+                      <span className="block text-[12px] text-[var(--secondary-label)] leading-[18px] break-words">{ins.content}</span>
+                      <span className="flex gap-2 mt-2.5">
+                        <span
+                          onClick={(e) => { e.stopPropagation(); onInsightRead(ins.id); }}
+                          className="px-3 py-1.5 h-[30px] rounded-full text-[12px] font-medium bg-[var(--system-gray5)] text-[var(--secondary-label)] press-effect cursor-pointer"
+                        >
+                          已读
+                        </span>
+                        <span
+                          onClick={(e) => { e.stopPropagation(); onInsightAction(ins.id, 'accept'); }}
+                          className="px-3 py-1.5 h-[30px] rounded-full text-[12px] font-semibold bg-[var(--system-green)] text-white press-effect cursor-pointer"
                         >
                           去调整
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
+                        </span>
+                      </span>
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -1703,10 +1712,16 @@ function FridgeView({
       {historyInsights.length > 0 && (
         <div className="mb-4">
           <p className="text-[13px] font-semibold text-[var(--secondary-label)] mb-2 flex items-center gap-1.5">
-            <Sparkles className="size-3.5 text-[var(--system-blue)]" /> 小养的冰箱洞察
+            <Sparkles className="size-3.5 text-[var(--system-blue)] shrink-0" /> 小养的冰箱洞察
+            {historyInsights.find((i) => i.type === 'observation') && (
+              <span className="ml-1 flex-1 text-[12px] font-medium text-[var(--secondary-label)] truncate">
+                {historyInsights.find((i) => i.type === 'observation')?.title}
+                <span className="text-[var(--system-pink)]"> ♥</span>
+              </span>
+            )}
           </p>
           <div className="space-y-2">
-            {historyInsights.slice(0, 6).map((ins) => {
+            {historyInsights.filter((i) => i.type !== 'observation').slice(0, 6).map((ins) => {
               const open = expanded === ins.id;
               return (
                 <button
