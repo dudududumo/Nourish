@@ -708,6 +708,7 @@ function TodayView({
   const meals = todayData?.today.meals || {};
   const hasPlan = todayData?.hasPlan;
   const [openSteps, setOpenSteps] = useState<string>('');
+  const [openIngredients, setOpenIngredients] = useState<string>('');
 
   return (
     <div className="max-w-2xl mx-auto px-4 pb-6">
@@ -878,16 +879,19 @@ function TodayView({
                       const dishKey = `${mealType}-${i}`;
                       const isOpen = openSteps === dishKey;
                       const hasSteps = dish.steps && dish.steps.length > 0;
+                      const ingAll = dish.ingredients.length > 4;
+                      const ingExpanded = openIngredients === dishKey;
+                      const visibleIngredients = ingAll && !ingExpanded ? dish.ingredients.slice(0, 4) : dish.ingredients;
                       return (
                         <div key={dish.id || dishKey} className={`px-4 py-3 ${i !== dishes.length - 1 ? 'border-b border-[var(--separator)]' : ''}`}>
                           <div className="flex items-start justify-between">
-                            <p className="text-[14px] font-medium">{dish.name}</p>
+                            <p className="text-[14px] font-medium">{dish.name || dish.dishName || '未命名菜品'}</p>
                             <span className="text-[11px] text-[var(--secondary-label)] shrink-0 ml-2">
                               {dish.calories} kcal
                             </span>
                           </div>
                           <div className="flex flex-wrap gap-1 mt-2">
-                            {dish.ingredients.slice(0, 4).map((ing) => (
+                            {visibleIngredients.map((ing) => (
                               <span
                                 key={ing.name}
                                 className={`text-[10px] px-2 py-0.5 rounded-full ${
@@ -899,10 +903,13 @@ function TodayView({
                                 {ing.fromFridge && '🧊 '}{ing.name}
                               </span>
                             ))}
-                            {dish.ingredients.length > 4 && (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--system-gray5)] text-[var(--secondary-label)]">
-                                +{dish.ingredients.length - 4}
-                              </span>
+                            {ingAll && (
+                              <button
+                                onClick={() => setOpenIngredients(ingExpanded ? '' : dishKey)}
+                                className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--system-gray4)] text-[var(--secondary-label)] press-effect"
+                              >
+                                {ingExpanded ? '收起' : `+${dish.ingredients.length - 4}`}
+                              </button>
                             )}
                           </div>
                           {hasSteps ? (

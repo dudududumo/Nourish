@@ -35,6 +35,7 @@ export async function GET(request: Request) {
     if (!mealsByType[meal.mealType]) mealsByType[meal.mealType] = [];
     mealsByType[meal.mealType].push({
       ...meal,
+      name: meal.dishName,
       ingredients: JSON.parse(meal.ingredientsJson || '[]'),
       steps: JSON.parse(meal.stepsJson || '[]'),
     });

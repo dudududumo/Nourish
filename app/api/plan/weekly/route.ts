@@ -483,10 +483,15 @@ export async function GET(request: Request) {
 
   if (!plan) return Response.json({ plan: null, meals: [], shoppingList: [], insights: [] });
 
-  const meals = await db.select()
+  const meals = (await db.select()
     .from(dailyMeals)
     .where(eq(dailyMeals.planId, plan.id))
-    .all();
+    .all()).map((m: any) => ({
+      ...m,
+      name: m.dishName,
+      ingredients: JSON.parse(m.ingredientsJson || '[]'),
+      steps: JSON.parse(m.stepsJson || '[]'),
+    }));
 
   const shopping = await db.select()
     .from(shoppingItems)
