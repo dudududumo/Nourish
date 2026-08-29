@@ -307,6 +307,15 @@ ${JSON.stringify(body.zones || [], null, 2)}
       );
     }
 
+    // 诊断：统计归一化后每天到底有几个菜，如果全是空说明结构没对上
+    const dayDishCounts = result.plan.days.map((d: any) => {
+      const b = Array.isArray(d?.breakfast) ? d.breakfast.length : 0;
+      const l = Array.isArray(d?.lunch) ? d.lunch.length : 0;
+      const dn = Array.isArray(d?.dinner) ? d.dinner.length : 0;
+      return { b, l, dn };
+    });
+    console.log('[weekly plan] 归一化后每天菜品数:', JSON.stringify(dayDishCounts));
+
     const actualDays = Math.min(result.plan.days.length, 7);
     console.log(`[weekly plan] AI 返回了 ${result.plan.days.length} 天数据，使用前 ${actualDays} 天`);
 
@@ -449,7 +458,7 @@ ${JSON.stringify(body.zones || [], null, 2)}
       insightsInserted = result.insights.length;
     }
 
-    return Response.json({ planId, weekStart: weekStartStr, weekEnd: weekEndStr, mealsInserted, shoppingInserted, insightsInserted });
+    return Response.json({ planId, weekStart: weekStartStr, weekEnd: weekEndStr, mealsInserted, shoppingInserted, insightsInserted, dayDishCounts });
   } catch (e) {
     const isDev = process.env.NODE_ENV !== 'production';
     const message = e instanceof Error ? e.message : '生成失败，请稍后再试。';
