@@ -7,7 +7,7 @@ import {
   Sparkles, TrendingDown, Dumbbell, Archive,
   Flame, Info, Settings, Send, Plus, X,
   LogOut, User, Loader2, AlertCircle,
-  Bell, ChevronDown, ShoppingCart, Zap, Bot, Upload, ImageIcon,
+  Bell, ChevronDown, ShoppingCart, Zap, Bot, Upload, ImageIcon, Minus,
 } from 'lucide-react';
 
 type Tab = 'today' | 'plan' | 'coach' | 'fridge' | 'body';
@@ -133,6 +133,7 @@ export default function HomePage() {
   const [qtyAmount, setQtyAmount] = useState('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [savedInsights, setSavedInsights] = useState<Insight[] | null>(null);
+  const [insightsOpen, setInsightsOpen] = useState(false);
   const [qtyZone, setQtyZone] = useState('冷藏');
   const [pendingAdjustment, setPendingAdjustment] = useState<{ instruction: string; aiPlan?: string } | null>(null);
   const [adjusting, setAdjusting] = useState(false);
@@ -575,53 +576,65 @@ export default function HomePage() {
         {tab === 'coach' && (
           <>
             {savedInsights !== null && savedInsights.length > 0 && (
-              <div className="mb-4">
-                <SectionTitle eyebrow="小养主动发现" title="最近洞察" />
-                <div className="space-y-2">
-                  {savedInsights.slice(0, 5).map((ins) => (
-                    <div
-                      key={ins.id}
-                      className={`rounded-2xl px-4 py-3 ${
-                        ins.type === 'warning'
-                          ? 'bg-[var(--system-red)]/8 border border-[var(--system-red)]/18'
-                          : ins.type === 'suggestion'
-                            ? 'bg-[var(--system-blue)]/6 border border-[var(--system-blue)]/18'
-                            : 'bg-[var(--secondary-grouped-background)]'
-                      }`}
+              !insightsOpen ? (
+                <button
+                  onClick={() => setInsightsOpen(true)}
+                  className="fixed right-4 bottom-[92px] z-40 size-12 rounded-2xl bg-[var(--system-blue)]/95 text-white shadow-lg shadow-[var(--system-blue)]/30 flex items-center justify-center press-effect backdrop-blur-md"
+                  aria-label="查看最近洞察"
+                >
+                  <Sparkles className="size-5" />
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[var(--system-red)] text-white text-[11px] font-semibold flex items-center justify-center border-2 border-[var(--background)]">
+                    {savedInsights.filter((i) => !i.readAt).length}
+                  </span>
+                </button>
+              ) : (
+                <div className="fixed right-4 bottom-[92px] z-40 w-[300px] max-h-[440px] flex flex-col rounded-2xl bg-[var(--ios-card)]/92 backdrop-blur-xl border border-[var(--separator)] shadow-2xl overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--separator)]">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="size-4 text-[var(--system-blue)]" />
+                      <span className="text-[14px] font-semibold text-[var(--label)]">最近洞察</span>
+                    </div>
+                    <button
+                      onClick={() => setInsightsOpen(false)}
+                      className="size-7 rounded-full flex items-center justify-center text-[var(--secondary-label)] hover:text-[var(--label)] press-effect"
+                      aria-label="最小化"
                     >
-                      <div className="flex items-start gap-2.5">
-                        {ins.type === 'warning' ? (
-                          <AlertCircle className="size-4 text-[var(--system-red)] shrink-0 mt-0.5" />
-                        ) : ins.type === 'suggestion' ? (
-                          <Sparkles className="size-4 text-[var(--system-blue)] shrink-0 mt-0.5" />
-                        ) : (
-                          <Info className="size-4 text-[var(--system-green)] shrink-0 mt-0.5" />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[13px] font-semibold leading-[18px] text-[var(--label)]">{ins.title}</p>
-                          <p className="text-[12px] text-[var(--secondary-label)] leading-[18px] mt-0.5">{ins.content}</p>
-                          <div className="flex gap-2 mt-2">
+                      <Minus className="size-4" />
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                    {savedInsights.slice(0, 10).map((ins) => (
+                      <div key={ins.id} className="rounded-xl px-3 py-2.5 bg-[var(--secondary-grouped-background)]">
+                        <div className="flex items-center gap-1.5">
+                          {ins.type === 'warning'
+                            ? <AlertCircle className="size-3.5 text-[var(--system-red)] shrink-0" />
+                            : ins.type === 'suggestion'
+                              ? <Sparkles className="size-3.5 text-[var(--system-blue)] shrink-0" />
+                              : <Info className="size-3.5 text-[var(--system-green)] shrink-0" />}
+                          <p className="text-[13px] font-semibold text-[var(--label)] truncate">{ins.title}</p>
+                        </div>
+                        <p className="text-[12px] text-[var(--secondary-label)] leading-[17px] mt-1 line-clamp-3">{ins.content}</p>
+                        <div className="flex gap-2 mt-2">
+                          <button
+                            onClick={() => markInsightRead(ins.id)}
+                            className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-[var(--system-gray5)] text-[var(--secondary-label)] press-effect"
+                          >
+                            已读
+                          </button>
+                          {(ins.type === 'suggestion' || ins.type === 'warning') && (
                             <button
-                              onClick={() => markInsightRead(ins.id)}
-                              className="px-3 py-1.5 rounded-full text-[12px] font-medium bg-[var(--system-gray5)] text-[var(--secondary-label)] press-effect"
+                              onClick={() => handleInsightAction(ins.id, 'accept')}
+                              className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[var(--system-green)] text-white press-effect"
                             >
-                              已读
+                              去调整
                             </button>
-                            {(ins.type === 'suggestion' || ins.type === 'warning') && (
-                              <button
-                                onClick={() => handleInsightAction(ins.id, 'accept')}
-                                className="px-3 py-1.5 rounded-full text-[12px] font-semibold bg-[var(--system-green)] text-white press-effect"
-                              >
-                                去调整
-                              </button>
-                            )}
-                          </div>
+                          )}
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )
             )}
             <CoachChatView
             messages={chatMessages}
