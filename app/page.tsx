@@ -47,16 +47,15 @@ const metrics = [
 ] as const;
 
 const initialZones: Zone[] = [
-  { id: 'fresh', name: '冷藏上层', type: '冷藏', capacity: 32, used: 21, icon: '🥬' },
-  { id: 'drawer', name: '果蔬抽屉', type: '冷藏', capacity: 18, used: 10, icon: '🥑' },
-  { id: 'freezer', name: '冷冻柜', type: '冷冻', capacity: 45, used: 24, icon: '🧊' },
+  { id: 'fridge', name: '冷藏', type: '冷藏', capacity: 50, used: 32, icon: '🧊' },
+  { id: 'freezer', name: '冷冻', type: '冷冻', capacity: 45, used: 24, icon: '❄️' },
 ];
 
 const foods = [
-  { name: '鸡腿肉', zone: '冷藏上层', amount: '460g', days: 2, icon: '🍗', shelf: 0 },
-  { name: '小番茄', zone: '果蔬抽屉', amount: '320g', days: 3, icon: '🍅', shelf: 1 },
-  { name: '虾仁', zone: '冷冻柜', amount: '300g', days: 24, icon: '🍤', shelf: 2 },
-  { name: '牛油果', zone: '果蔬抽屉', amount: '2 个', days: 4, icon: '🥑', shelf: 1 },
+  { name: '鸡腿肉', zone: '冷藏', amount: '460g', days: 2, icon: '🍗', shelf: 0 },
+  { name: '小番茄', zone: '冷藏', amount: '320g', days: 3, icon: '🍅', shelf: 0 },
+  { name: '虾仁', zone: '冷冻', amount: '300g', days: 24, icon: '🍤', shelf: 1 },
+  { name: '牛油果', zone: '冷藏', amount: '2 个', days: 4, icon: '🥑', shelf: 0 },
 ];
 
 type AuthUser = { id: string; phone: string; nickname: string | null };
@@ -75,7 +74,6 @@ export default function HomePage() {
   const [aiSaving, setAiSaving] = useState(false);
   const [aiSaved, setAiSaved] = useState(false);
   const [zones, setZones] = useState(initialZones);
-  const [fridgeOpen, setFridgeOpen] = useState(false);
   const [todayData, setTodayData] = useState<TodayData | null>(null);
   const [todayLoading, setTodayLoading] = useState(true);
   const [generatingPlan, setGeneratingPlan] = useState(false);
@@ -508,8 +506,6 @@ export default function HomePage() {
         {tab === 'fridge' && (
           <FridgeView
             zones={zones}
-            fridgeOpen={fridgeOpen}
-            setFridgeOpen={setFridgeOpen}
             onSettings={() => setFridgeSettings(true)}
             onGenerate={() => { setTab('plan'); void generateWeeklyPlan(); }}
             onAgentAnalyze={() => triggerAgentAnalysis('fridge', '冰箱库存有更新')}
@@ -1214,28 +1210,17 @@ function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult }: {
 /* ==================== Fridge View ==================== */
 
 function FridgeView({
-  zones, fridgeOpen, setFridgeOpen, onSettings, onGenerate, onAgentAnalyze, agentAnalyzing, agentResult,
+  zones, onSettings, onGenerate, onAgentAnalyze, agentAnalyzing, agentResult,
 }: {
   zones: Zone[];
-  fridgeOpen: boolean;
-  setFridgeOpen: (v: boolean) => void;
   onSettings: () => void;
   onGenerate: () => void;
   onAgentAnalyze: () => void;
   agentAnalyzing: boolean;
-  agentResult: { success: boolean; count?: number; message?: string } | null;
+  agentResult: { success: boolean; count?: number; message?: string; insights?: Insight[] } | null;
 }) {
   const total = useMemo(() => zones.reduce((s, z) => s + z.capacity, 0), [zones]);
   const used = useMemo(() => zones.reduce((s, z) => s + z.used, 0), [zones]);
-
-  // Organize foods by shelf for 3D view
-  const shelfFoods = useMemo(() => {
-    const shelves: string[][] = [[], [], []];
-    foods.forEach((f) => {
-      if (f.shelf >= 0 && f.shelf < 3) shelves[f.shelf].push(f.icon);
-    });
-    return shelves;
-  }, []);
 
   return (
     <div className="max-w-2xl mx-auto px-4 pb-6">
@@ -1253,83 +1238,52 @@ function FridgeView({
         </button>
       </div>
 
-      {/* 3D Fridge Scene */}
-      <div
-        className="fridge-scene bg-gradient-to-b from-[var(--system-gray6)] to-[var(--secondary-grouped-background)] rounded-2xl py-8 mb-5 cursor-pointer"
-        onClick={() => setFridgeOpen(!fridgeOpen)}
-      >
-        <div className="fridge-body">
-          <div className="fridge-cavity">
-            {shelfFoods.map((items, i) => (
-              <div
-                key={i}
-                className="fridge-shelf"
-                style={{ top: `${20 + i * 110}px` }}
-              >
-                {items.slice(0, 4).map((icon, j) => (
-                  <span key={j}>{icon}</span>
-                ))}
-              </div>
-            ))}
-          </div>
-          <div className={`fridge-door ${fridgeOpen ? 'is-open' : ''}`}>
-            <div className="fridge-brand">NOURISH</div>
-            <div className="fridge-handle" />
-          </div>
-        </div>
-        <p className="text-[13px] text-[var(--secondary-label)] mt-4 text-center">
-          点击{fridgeOpen ? '关闭' : '打开'}冰箱门
-        </p>
-      </div>
-
-      {/* Capacity Zones */}
-      <SectionTitle eyebrow="空间使用" title="分区容量" />
-      <div className="bg-[var(--secondary-grouped-background)] rounded-2xl overflow-hidden mb-5">
-        {zones.map((z, i) => (
-          <div key={z.id} className={`px-4 py-3.5 ${i !== zones.length - 1 ? 'border-b border-[var(--separator)]' : ''}`}>
-            <div className="flex justify-between items-center mb-2">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">{z.icon}</span>
-                <span className="text-[15px] font-medium">{z.name}</span>
-                <span className="text-[12px] text-[var(--secondary-label)]">{z.type}</span>
-              </div>
-              <span className="text-[14px] text-[var(--secondary-label)]">{z.used}/{z.capacity} L</span>
+      {/* 分区 + 库存（一排排） */}
+      {zones.map((z) => {
+        const zFoods = foods.filter((f) => f.zone === z.name);
+        return (
+          <div key={z.id} className="mb-5">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-lg">{z.icon}</span>
+              <span className="text-[15px] font-semibold">{z.name}</span>
+              <span className="text-[12px] text-[var(--secondary-label)]">{z.type}</span>
+              <span className="ml-auto text-[13px] text-[var(--secondary-label)]">{z.used}/{z.capacity} L</span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-[var(--system-gray5)]">
+            <div className="h-1.5 overflow-hidden rounded-full bg-[var(--system-gray5)] mb-2">
               <div
                 className={`h-full rounded-full ${z.type === '冷冻' ? 'bg-[var(--system-blue)]' : 'bg-[var(--system-green)]'}`}
-                style={{ width: `${Math.min(100, z.used / z.capacity * 100)}%` }}
+                style={{ width: `${Math.min(100, (z.used / z.capacity) * 100)}%` }}
               />
             </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Inventory List */}
-      <SectionTitle eyebrow="库存" title="按到期顺序" action="添加" onAction={() => {}} />
-      <div className="bg-[var(--secondary-grouped-background)] rounded-2xl overflow-hidden mb-5">
-        {foods.map((food, i) => (
-          <div
-            key={food.name}
-            className={`flex items-center gap-3 px-4 py-3.5 ${i !== foods.length - 1 ? 'border-b border-[var(--separator)]' : ''}`}
-          >
-            <span className="text-2xl">{food.icon}</span>
-            <div className="flex-1 min-w-0">
-              <p className="text-[15px] font-medium">{food.name} · {food.amount}</p>
-              <p className="text-[13px] text-[var(--secondary-label)]">{food.zone}</p>
+            <div className="bg-[var(--secondary-grouped-background)] rounded-2xl overflow-hidden">
+              {zFoods.length === 0 ? (
+                <p className="px-4 py-3 text-[13px] text-[var(--secondary-label)]">空</p>
+              ) : (
+                zFoods.map((food, i) => (
+                  <div
+                    key={food.name}
+                    className={`flex items-center gap-3 px-4 py-3 ${i !== zFoods.length - 1 ? 'border-b border-[var(--separator)]' : ''}`}
+                  >
+                    <span className="text-2xl">{food.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[15px] font-medium">{food.name} · {food.amount}</p>
+                    </div>
+                    <span
+                      className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${
+                        food.days <= 3
+                          ? 'bg-[var(--system-red)]/10 text-[var(--system-red)]'
+                          : 'bg-[var(--system-gray5)] text-[var(--secondary-label)]'
+                      }`}
+                    >
+                      {food.days} 天
+                    </span>
+                  </div>
+                ))
+              )}
             </div>
-            <span
-              className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${
-                food.days <= 3
-                  ? 'bg-[var(--system-red)]/10 text-[var(--system-red)]'
-                  : 'bg-[var(--system-gray5)] text-[var(--secondary-label)]'
-              }`}
-            >
-              {food.days} 天
-            </span>
           </div>
-        ))}
-      </div>
+        );
+      })}
 
       <div className="grid grid-cols-2 gap-3">
         <button
@@ -1735,6 +1689,7 @@ function CoachChatView({
   adjusting: boolean;
   hasPlan: boolean;
 }) {
+  const [planExpanded, setPlanExpanded] = useState(false);
   const quickPrompts = [
     '我想改成增肌目标',
     '我不吃香菜',
@@ -1838,9 +1793,18 @@ function CoachChatView({
                 <p className="text-[11px] text-[var(--tertiary-label)] mt-0.5">你的需求：{pendingAdjustment.instruction}</p>
                 <div className="mt-2 rounded-xl bg-[var(--secondary-grouped-background)] p-3">
                   <p className="text-[12px] font-semibold text-[var(--label)] mb-1">将怎么调整</p>
-                  <p className="text-[12px] text-[var(--secondary-label)] leading-[19px] line-clamp-4 whitespace-pre-line">
+                  <p className={`text-[12px] text-[var(--secondary-label)] leading-[19px] whitespace-pre-line ${planExpanded ? '' : 'line-clamp-4'}`}>
                     {pendingAdjustment.aiPlan || 'AI 将根据你的新要求重新安排今天的早午晚餐。'}
                   </p>
+                  {pendingAdjustment.aiPlan && (
+                    <button
+                      onClick={() => setPlanExpanded(!planExpanded)}
+                      className="mt-2 text-[12px] font-medium text-[var(--system-blue)] press-effect flex items-center gap-0.5"
+                    >
+                      {planExpanded ? '收起' : '展开全部'}
+                      <ChevronDown className={`size-3.5 transition-transform ${planExpanded ? 'rotate-180' : ''}`} />
+                    </button>
+                  )}
                 </div>
                 <p className="text-[11px] text-[var(--tertiary-label)] mt-2">
                   确认后更新「今日」页食谱
