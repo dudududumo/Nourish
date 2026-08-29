@@ -139,14 +139,6 @@ export default function HomePage() {
         setPlanError(data.error ?? '生成失败，请稍后再试。');
       } else {
         console.log('[周计划] 生成成功：', data);
-        if (typeof data.mealsInserted === 'number' && data.mealsInserted === 0) {
-          setPlanError(
-            `AI 已返回计划，但未能提取出三餐菜品（mealsInserted=0）。\n` +
-            `每道菜统计：${JSON.stringify(data.dayDishCounts || [])}\n` +
-            `说明 AI 返回的结构与预期不符，请把这段发给开发。`
-          );
-          return;
-        }
         // Reload today data
         const todayRes = await fetch('/api/plan/today');
         const todayData2 = await todayRes.json();

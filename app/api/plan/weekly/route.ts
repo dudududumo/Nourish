@@ -307,15 +307,6 @@ ${JSON.stringify(body.zones || [], null, 2)}
       );
     }
 
-    // 诊断：统计归一化后每天到底有几个菜，如果全是空说明结构没对上
-    const dayDishCounts = result.plan.days.map((d: any) => {
-      const b = Array.isArray(d?.breakfast) ? d.breakfast.length : 0;
-      const l = Array.isArray(d?.lunch) ? d.lunch.length : 0;
-      const dn = Array.isArray(d?.dinner) ? d.dinner.length : 0;
-      return { b, l, dn };
-    });
-    console.log('[weekly plan] 归一化后每天菜品数:', JSON.stringify(dayDishCounts));
-
     const actualDays = Math.min(result.plan.days.length, 7);
     console.log(`[weekly plan] AI 返回了 ${result.plan.days.length} 天数据，使用前 ${actualDays} 天`);
 
@@ -420,14 +411,17 @@ ${JSON.stringify(body.zones || [], null, 2)}
     }
     const mealsInserted = allMeals.length;
     if (mealsInserted > 0) {
-      await db.insert(dailyMeals).values(allMeals);
+      // 逐条插入，绕开 drizzle D1 批量插入 autoIncrement 主键为 null 的 bug
+      for (const meal of allMeals) {
+        await db.insert(dailyMeals).values(meal);
+      }
     }
 
     // Insert shopping items
     let shoppingInserted = 0;
     if (result.plan.shoppingList && Array.isArray(result.plan.shoppingList) && result.plan.shoppingList.length > 0) {
-      await db.insert(shoppingItems).values(
-        result.plan.shoppingList.map((item: any) => ({
+      for (const item of result.plan.shoppingList) {
+        await db.insert(shoppingItems).values({
           planId,
           userId: user.id,
           name: item.name,
@@ -435,16 +429,16 @@ ${JSON.stringify(body.zones || [], null, 2)}
           reason: item.reason,
           purchased: 0,
           createdAt: now,
-        }))
-      );
+        });
+      }
       shoppingInserted = result.plan.shoppingList.length;
     }
 
     // Insert AI insights
     let insightsInserted = 0;
     if (result.insights && Array.isArray(result.insights) && result.insights.length > 0) {
-      await db.insert(aiInsights).values(
-        result.insights.map((ins: any) => ({
+      for (const ins of result.insights) {
+        await db.insert(aiInsights).values({
           userId: user.id,
           type: ins.type || 'suggestion',
           category: ins.category || 'nutrition',
@@ -453,12 +447,12 @@ ${JSON.stringify(body.zones || [], null, 2)}
           priority: ins.priority || 0,
           relatedPlanId: planId,
           createdAt: now,
-        }))
-      );
+        });
+      }
       insightsInserted = result.insights.length;
     }
 
-    return Response.json({ planId, weekStart: weekStartStr, weekEnd: weekEndStr, mealsInserted, shoppingInserted, insightsInserted, dayDishCounts });
+    return Response.json({ planId, weekStart: weekStartStr, weekEnd: weekEndStr, mealsInserted, shoppingInserted, insightsInserted });
   } catch (e) {
     const isDev = process.env.NODE_ENV !== 'production';
     const message = e instanceof Error ? e.message : '生成失败，请稍后再试。';
