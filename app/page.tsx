@@ -87,6 +87,19 @@ const initialFoods = [
 
 type AuthUser = { id: string; phone: string; nickname: string | null };
 
+function formatTime(iso: string) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+}
+
+const welcomeMessage: ChatMessage = {
+  id: 'welcome',
+  role: 'assistant',
+  content: '你好呀～我是你的专属营养师小养 🌿\n\n有什么我可以帮你的？比如：\n• "我想把目标改成增肌"\n• "我不吃香菜，帮我调整一下"\n• "今天中午吃什么比较好？"\n\n我会根据你的身体数据和冰箱库存来给你建议～',
+  time: '',
+};
+
 export default function HomePage() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('today');
@@ -119,6 +132,8 @@ export default function HomePage() {
   const [qtyItem, setQtyItem] = useState<{ name: string; amount: string } | null>(null);
   const [qtyAmount, setQtyAmount] = useState('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [savedInsights, setSavedInsights] = useState<Insight[] | null>(null);
+  const [qtyZone, setQtyZone] = useState('冷藏');
   const [pendingAdjustment, setPendingAdjustment] = useState<{ instruction: string; aiPlan?: string } | null>(null);
   const [adjusting, setAdjusting] = useState(false);
   const [chatInput, setChatInput] = useState('');
@@ -206,6 +221,9 @@ export default function HomePage() {
     }
     if (bodyResult?.insights) {
       setBodyResult({ ...bodyResult, insights: bodyResult.insights.filter((i) => i.id !== id) });
+    }
+    if (savedInsights) {
+      setSavedInsights(savedInsights.filter((i) => i.id !== id));
     }
   }
 
@@ -359,6 +377,12 @@ export default function HomePage() {
           time: replyTimeStr,
         };
         setChatMessages((prev) => [...prev, aiMsg]);
+        // 持久化本轮对话
+        void fetch('/api/chat/messages', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ messages: [{ role: 'user', content: msg }, { role: 'assistant', content: data.reply || '' }] }),
+        });
         // 用户在提调整需求时，弹出确认调整卡片（点到确认才真正改计划）
         if (wasAdjust) {
           setPendingAdjustment({ instruction: msg, aiPlan: data.reply || '' });
@@ -447,23 +471,37 @@ export default function HomePage() {
     setPendingAdjustment(null);
   }
 
-  // Initialize chat with welcome message
+  // 加载聊天历史 + 历史洞察（持久化）
   useEffect(() => {
-    if (tab === 'coach' && chatMessages.length === 0 && user) {
-      const now = new Date();
-      const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-      setChatMessages([
-        {
-          id: 'welcome',
-          role: 'assistant',
-          content: `你好呀～我是你的专属营养师小养 🌿\n\n有什么我可以帮你的？比如：\n• "我想把目标改成增肌"\n• "我不吃香菜，帮我调整一下"\n• "今天中午吃什么比较好？"\n\n我会根据你的身体数据和冰箱库存来给你建议～`,
-          time: timeStr,
-        },
-      ]);
+    if (tab === 'coach' && user && chatMessages.length === 0) {
+      void fetch('/api/chat/messages')
+        .then((r) => r.json())
+        .then((data: { messages?: Array<{ role: string; content: string; createdAt: string }> }) => {
+          const history = data.messages ?? [];
+          if (history.length) {
+            setChatMessages(history.map((m, i) => ({
+              id: `h-${i}-${m.createdAt}`,
+              role: m.role as 'user' | 'assistant',
+              content: m.content,
+              time: formatTime(m.createdAt),
+            })));
+          } else {
+            setChatMessages([welcomeMessage]);
+          }
+        })
+        .catch(() => setChatMessages([welcomeMessage]));
     }
-  }, [tab, chatMessages.length, user]);
+  }, [tab, user]);
 
-  // Load shopping list when sheet opens
+  // 加载历史洞察
+  useEffect(() => {
+    if (tab === 'coach' && user && savedInsights === null) {
+      void fetch('/api/insights/list')
+        .then((r) => r.json())
+        .then((data: { insights?: Insight[] }) => setSavedInsights(data.insights ?? []))
+        .catch(() => setSavedInsights([]));
+    }
+  }, [tab, user, savedInsights]);
   useEffect(() => {
     if (shoppingOpen && user) {
       void loadShoppingList();
@@ -535,7 +573,57 @@ export default function HomePage() {
           />
         )}
         {tab === 'coach' && (
-          <CoachChatView
+          <>
+            {savedInsights !== null && savedInsights.length > 0 && (
+              <div className="mb-4">
+                <SectionTitle eyebrow="小养主动发现" title="最近洞察" />
+                <div className="space-y-2">
+                  {savedInsights.slice(0, 5).map((ins) => (
+                    <div
+                      key={ins.id}
+                      className={`rounded-2xl px-4 py-3 ${
+                        ins.type === 'warning'
+                          ? 'bg-[var(--system-red)]/8 border border-[var(--system-red)]/18'
+                          : ins.type === 'suggestion'
+                            ? 'bg-[var(--system-blue)]/6 border border-[var(--system-blue)]/18'
+                            : 'bg-[var(--secondary-grouped-background)]'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        {ins.type === 'warning' ? (
+                          <AlertCircle className="size-4 text-[var(--system-red)] shrink-0 mt-0.5" />
+                        ) : ins.type === 'suggestion' ? (
+                          <Sparkles className="size-4 text-[var(--system-blue)] shrink-0 mt-0.5" />
+                        ) : (
+                          <Info className="size-4 text-[var(--system-green)] shrink-0 mt-0.5" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-semibold leading-[18px] text-[var(--label)]">{ins.title}</p>
+                          <p className="text-[12px] text-[var(--secondary-label)] leading-[18px] mt-0.5">{ins.content}</p>
+                          <div className="flex gap-2 mt-2">
+                            <button
+                              onClick={() => markInsightRead(ins.id)}
+                              className="px-3 py-1.5 rounded-full text-[12px] font-medium bg-[var(--system-gray5)] text-[var(--secondary-label)] press-effect"
+                            >
+                              已读
+                            </button>
+                            {(ins.type === 'suggestion' || ins.type === 'warning') && (
+                              <button
+                                onClick={() => handleInsightAction(ins.id, 'accept')}
+                                className="px-3 py-1.5 rounded-full text-[12px] font-semibold bg-[var(--system-green)] text-white press-effect"
+                              >
+                                去调整
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <CoachChatView
             messages={chatMessages}
             input={chatInput}
             setInput={setChatInput}
@@ -549,6 +637,7 @@ export default function HomePage() {
             adjusting={adjusting}
             hasPlan={todayData?.hasPlan ?? false}
           />
+          </>
         )}
         {tab === 'fridge' && (
           <FridgeView
@@ -766,22 +855,41 @@ export default function HomePage() {
       </Sheet>
 
       {/* 入冰箱数量确认 */}
-      <Sheet open={!!qtyItem} onClose={() => setQtyItem(null)}>
+      <Sheet open={!!qtyItem} onClose={() => setQtyItem(null)} title="入冰箱 · 选择分区">
         <div className="px-4 pb-6 space-y-4">
-          <div>
-            <p className="text-[17px] font-semibold text-[var(--label)]">入冰箱 · {qtyItem?.name}</p>
-            <p className="text-[13px] text-[var(--secondary-label)] mt-1">实际购买的数量可能和清单不同，确认后入库</p>
+          <p className="text-[13px] text-[var(--secondary-label)] -mt-1">放入 {qtyItem?.name} 到哪个分区？可确认实际购买数量</p>
+
+          <div className="bg-[var(--secondary-grouped-background)] rounded-2xl overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-3.5 border-b border-[var(--separator)]">
+              <span className="text-[14px] text-[var(--label)] w-16 shrink-0">分区</span>
+              <div className="flex-1 flex gap-2">
+                {['冷藏', '冷冻'].map((z) => (
+                  <button
+                    key={z}
+                    onClick={() => setQtyZone(z)}
+                    className={`flex-1 h-9 rounded-xl text-[14px] font-medium press-effect ${
+                      qtyZone === z
+                        ? 'bg-[var(--system-green)] text-white'
+                        : 'bg-[var(--system-gray5)] text-[var(--secondary-label)]'
+                    }`}
+                  >
+                    {z === '冷藏' ? '🧊 冷藏' : '❄️ 冷冻'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <label className="flex items-center gap-3 px-4 py-3.5">
+              <span className="text-[14px] text-[var(--label)] w-16 shrink-0">数量</span>
+              <input
+                autoFocus
+                value={qtyAmount}
+                onChange={(e) => setQtyAmount(e.target.value)}
+                placeholder="如：500g"
+                className="flex-1 min-w-0 bg-transparent text-[16px] text-[var(--label)] placeholder:text-[var(--tertiary-label)] outline-none text-right"
+              />
+            </label>
           </div>
-          <label className="block">
-            <span className="text-[13px] font-medium text-[var(--secondary-label)]">实际数量</span>
-            <input
-              autoFocus
-              value={qtyAmount}
-              onChange={(e) => setQtyAmount(e.target.value)}
-              placeholder="如：500g"
-              className="mt-1.5 w-full h-11 px-3.5 rounded-xl bg-[var(--secondary-grouped-background)] text-[16px] text-[var(--label)] placeholder:text-[var(--tertiary-label)] outline-none"
-            />
-          </label>
+
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={() => setQtyItem(null)}
@@ -791,7 +899,7 @@ export default function HomePage() {
             </button>
             <button
               onClick={() => {
-                if (qtyItem) addFood({ name: qtyItem.name, amount: qtyAmount, zone: '冷藏', days: 5 });
+                if (qtyItem) addFood({ name: qtyItem.name, amount: (qtyAmount || qtyItem.amount), zone: qtyZone, days: 5 });
                 setQtyItem(null);
               }}
               className="h-12 rounded-2xl bg-[var(--system-green)] text-white text-[15px] font-semibold press-effect"
