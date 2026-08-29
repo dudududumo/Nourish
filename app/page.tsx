@@ -1023,6 +1023,15 @@ function TodayView({
                           )}
                           {isOpen && (
                             <div className="mt-3 pt-3 border-t border-[var(--separator)]">
+                              <a
+                                href={`https://www.xiaohongshu.com/search_result?keyword=${encodeURIComponent(`${dish.name} 家常做法`)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="mb-2 inline-flex items-center gap-1 text-[11px] font-medium text-[var(--tertiary-label)] press-effect"
+                              >
+                                <span className="text-[12px]">📕</span>
+                                到小红书搜「{dish.name}」做法
+                              </a>
                               {hasSteps ? (
                                 <ol className="space-y-2">
                                   {dish.steps!.map((step, si) => (
