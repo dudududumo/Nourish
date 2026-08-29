@@ -143,12 +143,14 @@ ${JSON.stringify(body.zones, null, 2)}` : ''}
     const now = new Date().toISOString();
 
     // Insert AI insights into database（逐条插入，绕开批量插入 autoIncrement 主键为 null 的 bug）
+    // 按触发源强制归类：冰箱分析→fridge，身体分析→body，让洞察与来源可靠同步
+    const forcedCategory = body.triggerType === 'fridge' ? 'fridge' : body.triggerType === 'body' ? 'body' : null;
     const inserted: any[] = [];
     for (const ins of insights) {
       const row = await db.insert(aiInsights).values({
         userId: user.id,
         type: ins.type || 'suggestion',
-        category: ins.category || 'nutrition',
+        category: forcedCategory ?? (ins.category || 'nutrition'),
         title: ins.title,
         content: ins.content,
         priority: ins.priority || 0,

@@ -133,6 +133,8 @@ export default function HomePage() {
   const [qtyAmount, setQtyAmount] = useState('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [savedInsights, setSavedInsights] = useState<Insight[] | null>(null);
+  const [bodyHistory, setBodyHistory] = useState<Insight[] | null>(null);
+  const [fridgeHistory, setFridgeHistory] = useState<Insight[] | null>(null);
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [qtyZone, setQtyZone] = useState('冷藏');
   const [pendingAdjustment, setPendingAdjustment] = useState<{ instruction: string; aiPlan?: string } | null>(null);
@@ -226,6 +228,8 @@ export default function HomePage() {
     if (savedInsights) {
       setSavedInsights(savedInsights.filter((i) => i.id !== id));
     }
+    if (bodyHistory) setBodyHistory(bodyHistory.filter((i) => i.id !== id));
+    if (fridgeHistory) setFridgeHistory(fridgeHistory.filter((i) => i.id !== id));
   }
 
   function handleInsightAction(id: number, action: 'accept' | 'dismiss') {
@@ -494,6 +498,22 @@ export default function HomePage() {
     }
   }, [tab, user]);
 
+  // 加载历史身体洞察 / 冰箱洞察（与营养师同一套数据，按来源归类）
+  useEffect(() => {
+    if (tab === 'body' && bodyHistory === null) {
+      void fetch('/api/insights/list?scope=body')
+        .then((r) => r.json())
+        .then((data: { insights?: Insight[] }) => setBodyHistory(data.insights ?? []))
+        .catch(() => setBodyHistory([]));
+    }
+    if (tab === 'fridge' && fridgeHistory === null) {
+      void fetch('/api/insights/list?scope=fridge')
+        .then((r) => r.json())
+        .then((data: { insights?: Insight[] }) => setFridgeHistory(data.insights ?? []))
+        .catch(() => setFridgeHistory([]));
+    }
+  }, [tab, bodyHistory, fridgeHistory]);
+
   // 加载历史洞察
   useEffect(() => {
     if (tab === 'coach' && user && savedInsights === null) {
@@ -661,6 +681,7 @@ export default function HomePage() {
             onAgentAnalyze={() => triggerAgentAnalysis('fridge', '冰箱库存有更新')}
             agentAnalyzing={agentAnalyzing}
             agentResult={fridgeResult}
+              historyInsights={fridgeHistory ?? []}
             onInsightRead={markInsightRead}
             onInsightAction={handleInsightAction}
             onAddFood={addFood}
@@ -672,6 +693,7 @@ export default function HomePage() {
             onAgentAnalyze={() => triggerAgentAnalysis('body', '身体数据有更新')}
             agentAnalyzing={agentAnalyzing}
             agentResult={bodyResult}
+            historyInsights={bodyHistory ?? []}
             onInsightRead={markInsightRead}
             onInsightAction={handleInsightAction}
           />
@@ -1216,11 +1238,12 @@ function TodayView({
 
 /* ==================== Body View ==================== */
 
-function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult, onInsightRead, onInsightAction }: {
+function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult, historyInsights, onInsightRead, onInsightAction }: {
   onGenerate: () => void;
   onAgentAnalyze: () => void;
   agentAnalyzing: boolean;
   agentResult: { success: boolean; count?: number; message?: string; insights?: Insight[] } | null;
+  historyInsights: Insight[];
   onInsightRead: (id: number) => void;
   onInsightAction: (id: number, action: 'accept' | 'dismiss') => void;
 }) {
@@ -1263,6 +1286,57 @@ function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult, onI
         <Upload className="size-4" />
         上传数据（手动填写 / 图片解析）
       </button>
+
+      {/* 历史身体洞察（来自小养主动发现，与营养师同步） */}
+      {historyInsights.length > 0 && (
+        <div className="mb-4">
+          <p className="text-[13px] font-semibold text-[var(--secondary-label)] mb-2 flex items-center gap-1.5">
+            <Sparkles className="size-3.5 text-[var(--system-blue)]" /> 小养的身体洞察
+          </p>
+          <div className="space-y-2">
+            {historyInsights.slice(0, 6).map((ins) => (
+              <div
+                key={ins.id}
+                className={`rounded-2xl px-4 py-3 ${
+                  ins.type === 'warning'
+                    ? 'bg-[var(--system-red)]/8 border border-[var(--system-red)]/18'
+                    : 'bg-[var(--secondary-grouped-background)]'
+                }`}
+              >
+                <div className="flex items-start gap-2.5">
+                  {ins.type === 'warning' ? (
+                    <AlertCircle className="size-4 text-[var(--system-red)] shrink-0 mt-0.5" />
+                  ) : ins.type === 'suggestion' ? (
+                    <Sparkles className="size-4 text-[var(--system-blue)] shrink-0 mt-0.5" />
+                  ) : (
+                    <Info className="size-4 text-[var(--system-green)] shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-semibold leading-[18px] text-[var(--label)]">{ins.title}</p>
+                    <p className="text-[12px] text-[var(--secondary-label)] leading-[18px] mt-0.5">{ins.content}</p>
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={() => onInsightRead(ins.id)}
+                        className="px-3 py-1.5 rounded-full text-[12px] font-medium bg-[var(--system-gray5)] text-[var(--secondary-label)] press-effect"
+                      >
+                        已读
+                      </button>
+                      {(ins.type === 'suggestion' || ins.type === 'warning') && (
+                        <button
+                          onClick={() => onInsightAction(ins.id, 'accept')}
+                          className="px-3 py-1.5 rounded-full text-[12px] font-semibold bg-[var(--system-green)] text-white press-effect"
+                        >
+                          去调整
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* AI Analysis Result */}
       {agentResult && (
@@ -1581,7 +1655,7 @@ function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult, onI
 /* ==================== Fridge View ==================== */
 
 function FridgeView({
-  zones, foods, onSettings, onGenerate, onAgentAnalyze, agentAnalyzing, agentResult, onInsightRead, onInsightAction, onAddFood,
+  zones, foods, onSettings, onGenerate, onAgentAnalyze, agentAnalyzing, agentResult, historyInsights, onInsightRead, onInsightAction, onAddFood,
 }: {
   zones: Zone[];
   foods: { name: string; zone: string; amount: string; days: number; icon: string; shelf: number }[];
@@ -1590,6 +1664,7 @@ function FridgeView({
   onAgentAnalyze: () => void;
   agentAnalyzing: boolean;
   agentResult: { success: boolean; count?: number; message?: string; insights?: Insight[] } | null;
+  historyInsights: Insight[];
   onInsightRead: (id: number) => void;
   onInsightAction: (id: number, action: 'accept' | 'dismiss') => void;
   onAddFood: (f: { name: string; amount: string; zone: string; days: number }) => void;
@@ -1685,6 +1760,57 @@ function FridgeView({
           生成周计划
         </button>
       </div>
+
+      {/* 历史冰箱洞察（来自小养主动发现，与营养师同步） */}
+      {historyInsights.length > 0 && (
+        <div className="mb-4">
+          <p className="text-[13px] font-semibold text-[var(--secondary-label)] mb-2 flex items-center gap-1.5">
+            <Sparkles className="size-3.5 text-[var(--system-blue)]" /> 小养的冰箱洞察
+          </p>
+          <div className="space-y-2">
+            {historyInsights.slice(0, 6).map((ins) => (
+              <div
+                key={ins.id}
+                className={`rounded-2xl px-4 py-3 ${
+                  ins.type === 'warning'
+                    ? 'bg-[var(--system-red)]/8 border border-[var(--system-red)]/18'
+                    : 'bg-[var(--secondary-grouped-background)]'
+                }`}
+              >
+                <div className="flex items-start gap-2.5">
+                  {ins.type === 'warning' ? (
+                    <AlertCircle className="size-4 text-[var(--system-red)] shrink-0 mt-0.5" />
+                  ) : ins.type === 'suggestion' ? (
+                    <Sparkles className="size-4 text-[var(--system-blue)] shrink-0 mt-0.5" />
+                  ) : (
+                    <Info className="size-4 text-[var(--system-green)] shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-semibold leading-[18px] text-[var(--label)]">{ins.title}</p>
+                    <p className="text-[12px] text-[var(--secondary-label)] leading-[18px] mt-0.5">{ins.content}</p>
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={() => onInsightRead(ins.id)}
+                        className="px-3 py-1.5 rounded-full text-[12px] font-medium bg-[var(--system-gray5)] text-[var(--secondary-label)] press-effect"
+                      >
+                        已读
+                      </button>
+                      {(ins.type === 'suggestion' || ins.type === 'warning') && (
+                        <button
+                          onClick={() => onInsightAction(ins.id, 'accept')}
+                          className="px-3 py-1.5 rounded-full text-[12px] font-semibold bg-[var(--system-green)] text-white press-effect"
+                        >
+                          去调整
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* AI Analysis Result */}
       {agentResult && (
