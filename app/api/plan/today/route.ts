@@ -2,6 +2,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { getDb } from '@/db';
 import { weeklyPlans, dailyMeals, aiInsights } from '@/db/schema';
 import { eq, and, isNull, desc } from 'drizzle-orm';
+import { todayStr } from '@/lib/utils';
 
 export async function GET(request: Request) {
   const cookieHeader = request.headers.get('cookie');
@@ -9,7 +10,7 @@ export async function GET(request: Request) {
   if (!user) return Response.json({ error: '请先登录。' }, { status: 401 });
 
   const db = getDb();
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayStr();
 
   // Get active plan
   const plan = await db.select()

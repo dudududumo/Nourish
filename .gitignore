@@ -43,3 +43,8 @@ next-env.d.ts
 *.db-journal
 *.db-wal
 *.db-shm
+
+# build/debug artifacts
+tsconfig.tsbuildinfo
+.wrangler-debug.log
+ios/DerivedData/

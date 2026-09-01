@@ -18,7 +18,7 @@ export const sessions = sqliteTable('sessions', {
 }, (table) => [index('idx_sessions_token').on(table.token), index('idx_sessions_user').on(table.userId)]);
 
 export const profiles = sqliteTable('profiles', {
-  userId: text('user_id').primaryKey(), biologicalSex: text('biological_sex'), birthDate: text('birth_date'), heightCm: real('height_cm'), goal: text('goal').notNull().default('healthy_recomposition'), healthScreeningJson: text('health_screening_json').notNull().default('{}'), updatedAt: text('updated_at').notNull(),
+  userId: text('user_id').primaryKey(), biologicalSex: text('biological_sex'), birthDate: text('birth_date'), heightCm: real('height_cm'), weightKg: real('weight_kg'), goal: text('goal').notNull().default('healthy_recomposition'), healthScreeningJson: text('health_screening_json').notNull().default('{}'), updatedAt: text('updated_at').notNull(),
 });
 
 export const measurements = sqliteTable('measurements', {
@@ -115,4 +115,30 @@ export const aiInsights = sqliteTable('ai_insights', {
 }, (table) => [
   index('idx_insights_user_created').on(table.userId, table.createdAt),
   index('idx_insights_user_unread').on(table.userId, table.readAt),
+]);
+
+/* ===== Intermittent Fasting ===== */
+
+export const fastingSettings = sqliteTable('fasting_settings', {
+  userId: text('user_id').primaryKey(),
+  enabled: integer('enabled').notNull().default(0),
+  planHours: integer('plan_hours').notNull().default(16),
+  goal: text('goal').notNull().default('fat_loss'), // fat_loss | health | blood_sugar | maintain
+  experience: text('experience').notNull().default('beginner'), // beginner | intermediate | advanced
+  windowEndHour: integer('window_end_hour').notNull().default(20), // 进食窗口结束的小时(0-23)
+  startAt: text('start_at'),
+  updatedAt: text('updated_at').notNull(),
+});
+
+export const fastingLogs = sqliteTable('fasting_logs', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: text('user_id').notNull(),
+  date: text('date').notNull(), // YYYY-MM-DD
+  fastHours: real('fast_hours').notNull().default(0),
+  planHours: integer('plan_hours'),
+  energy: integer('energy'), // 精力 1-5
+  hunger: integer('hunger'), // 饥饿 1-5
+  createdAt: text('created_at').notNull(),
+}, (table) => [
+  index('idx_fasting_logs_user_date').on(table.userId, table.date),
 ]);

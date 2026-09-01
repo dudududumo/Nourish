@@ -1,0 +1,1 @@
+ALTER TABLE `fasting_settings` ADD `experience` text DEFAULT 'beginner' NOT NULL;

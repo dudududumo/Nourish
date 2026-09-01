@@ -15,6 +15,34 @@
       "when": 1787929794442,
       "tag": "0001_optimal_goblin_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788021813292,
+      "tag": "0002_fancy_wallflower",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1788022930000,
+      "tag": "0003_glossy_fasting_pro",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1788023000000,
+      "tag": "0004_calm_fasting_experience",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1788195547266,
+      "tag": "0005_flawless_tyger_tiger",
+      "breakpoints": true
     }
   ]
 }

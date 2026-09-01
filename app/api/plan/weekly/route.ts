@@ -3,6 +3,7 @@ import { getAiSettings } from '@/lib/ai-settings';
 import { getDb } from '@/db';
 import { weeklyPlans, dailyMeals, shoppingItems, aiInsights } from '@/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
+import { todayStr, addDays, dayOfWeekOf } from '@/lib/utils';
 
 const SYSTEM_PROMPT = `你是"轻养"的专业注册营养师，负责为用户制定科学的 7 天健康饮食计划。
 
@@ -186,27 +187,21 @@ export async function POST(request: Request) {
     constraints?: string;
   };
 
-  // 从今天开始的 7 天，不强制从周一开始
-  const weekStart = new Date();
-  const weekStartStr = weekStart.toISOString().split('T')[0];
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekEnd.getDate() + 6);
-  const weekEndStr = weekEnd.toISOString().split('T')[0];
+  // 从今天开始，连续 7 天
+  const weekStartStr = todayStr();
+  const weekEndStr = addDays(weekStartStr, 6);
 
-  const weekdayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  const weekdayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
   // Build days array from today
   const days: Array<{ date: string; dayOfWeek: number; label: string }> = [];
   for (let i = 0; i < 7; i++) {
-    const d = new Date(weekStart);
-    d.setDate(d.getDate() + i);
-    const jsDay = d.getDay(); // 0=Sunday
-    // 转成我们的 dayOfWeek: 0=周一 ... 6=周日 (兼容现有逻辑)
-    const ourDayOfWeek = jsDay === 0 ? 6 : jsDay - 1;
+    const date = addDays(weekStartStr, i);
+    const ourDayOfWeek = dayOfWeekOf(date);
     days.push({
-      date: d.toISOString().split('T')[0],
+      date,
       dayOfWeek: ourDayOfWeek,
-      label: i === 0 ? '今天' : i === 1 ? '明天' : weekdayNames[jsDay],
+      label: i === 0 ? '今天' : i === 1 ? '明天' : weekdayNames[ourDayOfWeek],
     });
   }
 

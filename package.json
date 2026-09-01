@@ -11,10 +11,14 @@
     "start": "wrangler dev --config dist/server/wrangler.json",
     "lint": "oxlint",
     "format": "oxfmt",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "cap:add:ios": "cap add ios",
+    "cap:sync": "cap sync",
+    "cap:open:ios": "cap open ios"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
+    "@capacitor/core": "^8.5.0",
     "@shadcn/react": "0.3.0",
     "better-sqlite3": "^13.0.3",
     "class-variance-authority": "0.7.1",
@@ -38,6 +42,8 @@
     "vinext": "1.0.0-beta.5"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/ios": "^8.5.0",
     "@cloudflare/vite-plugin": "1.37.1",
     "@cloudflare/workers-types": "4.20260515.1",
     "@openai/sites-vite-plugin": "0.2.0",

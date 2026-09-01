@@ -1,8 +1,7 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://nourish-health-os.sites.openai.com'),
   title: '轻养 Nourish — 你的每日健康系统',
   description: '把饮食、冰箱库存、训练、轻断食和身体趋势放进一个温和而专业的健康闭环。',
   openGraph: { title: '轻养 · Nourish', description: '你的每日健康系统', images: ['/og.png'] },
@@ -10,6 +9,14 @@ export const metadata: Metadata = {
   manifest: '/manifest.webmanifest',
   appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: '轻养' },
   icons: { icon: '/favicon.svg', apple: '/favicon.svg' },
+};
+
+// viewport-fit=cover 让 CSS 的 env(safe-area-inset-*) 在原生 WebView / 独立 PWA 里生效
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#F4EFE3',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
