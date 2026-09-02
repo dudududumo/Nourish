@@ -1,7 +1,5 @@
-ALTER TABLE `fasting_logs` ADD `plan_hours` integer;--> statement-breakpoint
-ALTER TABLE `fasting_logs` ADD `energy` integer;--> statement-breakpoint
-ALTER TABLE `fasting_logs` ADD `hunger` integer;--> statement-breakpoint
-ALTER TABLE `fasting_settings` ADD `goal` text DEFAULT 'fat_loss' NOT NULL;--> statement-breakpoint
-ALTER TABLE `fasting_settings` ADD `experience` text DEFAULT 'beginner' NOT NULL;--> statement-breakpoint
-ALTER TABLE `fasting_settings` ADD `window_end_hour` integer DEFAULT 20 NOT NULL;--> statement-breakpoint
-ALTER TABLE `profiles` ADD `weight_kg` real;
+-- Compatibility marker only. These columns were already introduced by
+-- 0003_glossy_fasting_pro.sql and 0004_calm_fasting_experience.sql.
+-- Keeping this migration as a no-op preserves the published migration order
+-- without attempting duplicate ALTER TABLE operations on existing databases.
+SELECT 1;
