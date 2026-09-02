@@ -108,10 +108,10 @@ const metrics = [
 
 // ===== 各指标的科学分级区间（常规健康参考，不构成医疗建议） =====
 const ZC = {
-  low: '#5B8E9A',    // 偏低 / 不足 / 偏缓（湖蓝）
-  norm: '#22A06B',   // 正常 / 标准 / 良好（健康绿）
-  high: '#D9A05B',   // 偏高 / 轻度超标（陶土橙）
-  danger: '#C96A5B', // 较高 / 肥胖 / 危险（暖红）
+  low: '#86EFAC',    // 偏低 / 不足 / 偏缓（浅绿）
+  norm: '#22C55E',   // 正常 / 标准 / 良好（健康绿）
+  high: '#4ADE80',   // 偏高 / 轻度超标（亮绿）
+  danger: '#D64545', // 明确健康风险保留语义红
 };
 
 type ZoneDef = { label: string; min: number; max: number; color: string };
@@ -1619,8 +1619,9 @@ function RingGauge({ progress, size = 232, children }: { progress: number; size?
         />
         <defs>
           <linearGradient id="fastRingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#D9A05B" />
-            <stop offset="100%" stopColor="#E8B06A" />
+            <stop offset="0%" stopColor="#22C55E" />
+            <stop offset="55%" stopColor="#4ADE80" />
+            <stop offset="100%" stopColor="#16A34A" />
           </linearGradient>
         </defs>
       </svg>
@@ -1851,7 +1852,7 @@ function FastingView({
 
       {/* 首次设置引导 */}
       {needProfile && !fasting.recommendation.contraindicated && (
-        <button onClick={() => setProfileOpen(true)} className="mb-4 w-full flex items-center gap-3 rounded-2xl bg-gradient-to-br from-[#22A06B] to-[#187A52] p-4 text-white press-effect text-left">
+        <button onClick={() => setProfileOpen(true)} className="mb-4 w-full flex items-center gap-3 rounded-2xl bg-gradient-to-br from-[#22C55E] via-[#4ADE80] to-[#16A34A] p-4 text-white press-effect text-left">
           <Target className="size-6 shrink-0" />
           <div className="flex-1">
             <p className="text-[15px] font-semibold">先完成个性化设置</p>
@@ -2207,22 +2208,22 @@ function TodayView({
 
       {/* No plan yet */}
       {!loading && !hasPlan && (
-        <div className="bg-gradient-to-br from-[#4B6050] to-[#6B8165] rounded-2xl p-6 text-white mb-5">
+        <div className="rounded-2xl bg-[#F0FDF4] p-6 text-[var(--label)] mb-5 border border-[#DCFCE7]">
           <Zap className="size-9" />
           <h2 className="text-[22px] font-bold mt-4">还没有本周计划</h2>
-          <p className="mt-2 text-[14px] leading-[22px] text-[#D3DCC6]">
+          <p className="mt-2 text-[14px] leading-[22px] text-[var(--secondary-label)]">
             AI 营养师会根据你的身体数据和冰箱库存，生成整周食谱和采购清单。
           </p>
           <button
             onClick={onGenerate}
             disabled={generating}
-            className="mt-5 w-full h-11 rounded-xl bg-white text-[#4B6050] font-semibold flex items-center justify-center gap-2 press-effect disabled:opacity-50"
+            className="mt-5 w-full h-11 rounded-xl bg-[var(--system-green)] text-white font-semibold flex items-center justify-center gap-2 press-effect disabled:opacity-50"
           >
             {generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
             {generating ? '生成中…' : '生成本周计划'}
           </button>
           {error && (
-            <p className="mt-3 text-[12px] text-[#E4B6A8]">{error}</p>
+            <p className="mt-3 text-[12px] text-[var(--system-red)]">{error}</p>
           )}
         </div>
       )}
@@ -2231,7 +2232,7 @@ function TodayView({
       {!loading && hasPlan && todayData && (
         <>
           {/* Calories Ring Card */}
-          <div className="bg-gradient-to-br from-[var(--system-green)] to-[#187A52] rounded-2xl p-5 text-white mb-5">
+          <div className="bg-gradient-to-br from-[#22C55E] via-[#4ADE80] to-[#16A34A] rounded-2xl p-5 text-white mb-5">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-[13px] text-white/80">今日摄入</p>
@@ -2630,8 +2631,8 @@ function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult, his
       </div>
 
       {/* 体重总览（基于最新真实身体数据，无示例值） */}
-      <div className="mb-5 bg-gradient-to-br from-[#E6EFF0] to-white dark:from-[#33423F] dark:to-[var(--secondary-grouped-background)] rounded-2xl p-5">
-        <p className="text-[13px] text-[#5A7A78] dark:text-[#8FB0AC]">当前体重</p>
+      <div className="mb-5 bg-[#F0FDF4] border border-[#DCFCE7] rounded-2xl p-5">
+        <p className="text-[13px] text-[var(--secondary-label)]">当前体重</p>
         <p className="text-[36px] font-bold tracking-tight mt-1">
           {val('体重') || '—'}
           <span className="text-[14px] font-normal ml-1 text-[var(--secondary-label)]">kg</span>
@@ -2717,8 +2718,8 @@ function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult, his
                     </div>
                     {isFinite(num) && (
                       <div
-                        className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 size-[18px] rounded-full border-[3px] border-white shadow-md"
-                        style={{ left: `${located.pos}%`, backgroundColor: located.zone?.color ?? '#22A06B' }}
+                        className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 size-[18px] rounded-full border-[3px] border-white"
+                        style={{ left: `${located.pos}%`, backgroundColor: located.zone?.color ?? '#22C55E' }}
                       />
                     )}
                   </div>
@@ -3187,10 +3188,10 @@ function PlanView({
           </button>
         </div>
 
-        <div className="bg-gradient-to-br from-[#4B6050] to-[#6B8165] rounded-2xl p-6 text-white mb-5">
+        <div className="rounded-2xl bg-[#F0FDF4] p-6 text-[var(--label)] mb-5 border border-[#DCFCE7]">
           <CalendarRange className="size-9" />
           <h2 className="text-[22px] font-bold mt-4">整周饮食规划</h2>
-          <p className="mt-2 text-[14px] leading-[22px] text-[#D3DCC6]">
+          <p className="mt-2 text-[14px] leading-[22px] text-[var(--secondary-label)]">
             AI 营养师一次生成 7 天食谱，每天不重样，自动匹配冰箱库存。
           </p>
         </div>
@@ -3270,7 +3271,7 @@ function PlanView({
       </div>
 
       {/* Week Summary Card */}
-      <div className="bg-gradient-to-br from-[var(--system-green)] to-[#187A52] rounded-2xl p-5 text-white mb-5">
+      <div className="bg-gradient-to-br from-[#22C55E] via-[#4ADE80] to-[#16A34A] rounded-2xl p-5 text-white mb-5">
         <div className="flex items-start justify-between">
           <div>
             <p className="text-[13px] text-white/80">本周目标</p>
@@ -3475,7 +3476,7 @@ function CoachChatView({
       <div className="px-4 pt-2 pb-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <div className="size-10 rounded-full bg-gradient-to-br from-[var(--system-green)] to-[#187A52] flex items-center justify-center">
+            <div className="size-10 rounded-full bg-[var(--system-green)] flex items-center justify-center">
               <Bot className="size-5 text-white" />
             </div>
             <span className="absolute -bottom-0.5 -right-0.5 size-3 bg-[var(--system-green)] rounded-full border-2 border-[var(--grouped-background)]" />
@@ -3509,7 +3510,7 @@ function CoachChatView({
             className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             {msg.role === 'assistant' && (
-              <div className="size-8 rounded-full bg-gradient-to-br from-[var(--system-green)] to-[#187A52] flex items-center justify-center mr-2 shrink-0 mt-0.5">
+              <div className="size-8 rounded-full bg-[var(--system-green)] flex items-center justify-center mr-2 shrink-0 mt-0.5">
                 <Bot className="size-4 text-white" />
               </div>
             )}
@@ -3531,7 +3532,7 @@ function CoachChatView({
         ))}
         {loading && (
           <div className="flex justify-start">
-            <div className="size-8 rounded-full bg-gradient-to-br from-[var(--system-green)] to-[#187A52] flex items-center justify-center mr-2 shrink-0">
+            <div className="size-8 rounded-full bg-[var(--system-green)] flex items-center justify-center mr-2 shrink-0">
               <Bot className="size-4 text-white" />
             </div>
             <div className="bg-[var(--secondary-grouped-background)] rounded-2xl rounded-bl-md px-3.5 py-3">
