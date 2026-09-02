@@ -38,6 +38,14 @@ export async function POST(request: Request) {
     return Response.json({ error: '缺少有效的图片数据。' }, { status: 400 });
   }
 
+  const imageHeader = body.image.slice(0, body.image.indexOf(','));
+  if (!/^data:image\/(jpeg|png|webp);base64$/i.test(imageHeader)) {
+    return Response.json({ error: '仅支持 JPG、PNG 或 WebP 图片。' }, { status: 400 });
+  }
+  if (body.image.length > 8_000_000) {
+    return Response.json({ error: '图片过大，请压缩到 6MB 以内再上传。' }, { status: 413 });
+  }
+
   // 控制图片大小，避免请求体过大
   const image = body.image;
 

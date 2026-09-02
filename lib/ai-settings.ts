@@ -8,28 +8,27 @@ const decoder = new TextDecoder();
 function bytesToBase64(bytes: Uint8Array) { return btoa(String.fromCharCode(...bytes)); }
 function base64ToBytes(value: string) { return Uint8Array.from(atob(value), (char) => char.charCodeAt(0)); }
 
-// Fallback key for development / demo
-const FALLBACK_KEY = 'nourish-dev-encryption-key-2026!';
-
 async function encryptionKey() {
   const value = process.env.CONFIG_ENCRYPTION_KEY;
-  const keyValue = value || FALLBACK_KEY;
-  const keyBytes = new Uint8Array(32);
-  const keyStr = keyValue.padEnd(32, '0').slice(0, 32);
-  for (let i = 0; i < 32; i++) keyBytes[i] = keyStr.charCodeAt(i);
-  return crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['encrypt', 'decrypt']);
+  if (!value || value.length < 32) throw new Error('服务端尚未配置安全的加密密钥，请联系管理员。');
+  const digest = await crypto.subtle.digest('SHA-256', encoder.encode(value));
+  return crypto.subtle.importKey('raw', digest, 'AES-GCM', false, ['encrypt', 'decrypt']);
 }
 
 export function validateEndpoint(value: string) {
   const url = new URL(value);
-  // Allow http for localhost / dev environments
-  if (url.protocol !== 'https:' && url.hostname !== 'localhost' && !url.hostname.endsWith('.local')) {
-    throw new Error('生产环境接口必须使用 HTTPS。');
-  }
+  if (url.protocol !== 'https:') throw new Error('AI 接口必须使用 HTTPS。');
+  if (url.username || url.password) throw new Error('AI 接口地址不能包含用户名或密码。');
+  const host = url.hostname.toLowerCase();
+  const blockedHost = host === 'localhost' || host.endsWith('.local') || host === '0.0.0.0'
+    || host === '127.0.0.1' || host === '::1' || host.startsWith('10.') || host.startsWith('192.168.')
+    || host.startsWith('169.254.') || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+  if (blockedHost) throw new Error('AI 接口不能指向本机或内网地址。');
   return url.toString();
 }
 
 export async function saveAiSettings(userId: string, input: { provider: string; endpoint: string; model: string; apiKey: string }) {
+  if (input.provider.length > 40 || input.model.length > 120 || input.apiKey.length > 512) throw new Error('AI 配置字段长度超出限制。');
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await encryptionKey(), encoder.encode(input.apiKey));
   await getDb().insert(aiSettings).values({

@@ -5,7 +5,7 @@ import { weeklyPlans, dailyMeals } from '@/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { todayStr, addDays, dayOfWeekOf } from '@/lib/utils';
 
-const SYSTEM_PROMPT = `你是"轻养"的专业注册营养师，负责为用户续补未来几天的健康饮食计划。
+const SYSTEM_PROMPT = `你是"轻养"的 AI 营养与饮食规划助手，负责生成可供用户确认的饮食建议。你不是医生或注册营养师。
 
 【输出要求 - 非常重要】
 你必须返回一个合法的 JSON 对象，格式如下（days 数组长度必须等于要求的天数）：

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   Home, CalendarRange, Refrigerator, Activity, ChevronRight,
   Sparkles, TrendingDown, Dumbbell, Archive,
@@ -1458,6 +1459,10 @@ export default function HomePage() {
               <span className="text-[15px]">AI 服务设置</span>
               <ChevronRight className="size-5 text-[var(--tertiary-label)]" />
             </button>
+            <Link href="/evaluation" className="w-full flex items-center justify-between px-4 py-3.5 border-b border-[var(--separator)] press-effect">
+              <span className="text-[15px]">AI 评测中心</span>
+              <ChevronRight className="size-5 text-[var(--tertiary-label)]" />
+            </Link>
             <button className="w-full flex items-center justify-between px-4 py-3.5 press-effect">
               <span className="text-[15px]">关于轻养</span>
               <ChevronRight className="size-5 text-[var(--tertiary-label)]" />
@@ -1680,7 +1685,7 @@ function FastingOnboarding({ profile, goal, experience, onSubmit }: {
   return (
     <div className="px-4 pb-6 space-y-5">
       <p className="text-[13px] text-[var(--secondary-label)] leading-[19px]">
-        小养会根据你的身高、体重、目标和断食经验，推荐最合适的窗口，并随身体变化灵活调整。数据仅保存在本地账户。
+        小养会根据你的身高、体重、目标和断食经验提供参考建议，并随身体变化灵活调整。账户数据会安全保存在云端。
       </p>
 
       <div>
@@ -2104,7 +2109,7 @@ function FastingView({
         <div className="px-4 pb-6 space-y-5">
           <div className="rounded-2xl bg-[var(--secondary-grouped-background)] p-4">
             <p className="text-[14px] font-semibold text-[var(--label)]">时间限制进食（本应用）</p>
-            <p className="text-[13px] text-[var(--secondary-label)] leading-[19px] mt-1">把一天的进食压缩在固定窗口内，如 16:8 表示禁食 16 小时、8 小时内进食。核心是通过延长禁食时间，让身体消耗糖原后切换到脂肪供能、并触发细胞自噬。</p>
+            <p className="text-[13px] text-[var(--secondary-label)] leading-[19px] mt-1">把一天的进食压缩在固定窗口内，如 16:8 表示禁食 16 小时、8 小时内进食。个体反应差异较大，它不是治疗方案，也不以固定小时数承诺特定代谢或细胞效应。</p>
           </div>
           <div className="rounded-2xl bg-[var(--secondary-grouped-background)] p-4">
             <p className="text-[14px] font-semibold text-[var(--label)]">5:2 方案</p>
@@ -2620,7 +2625,7 @@ function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult, his
           <span className="absolute -top-0.5 -right-0.5 size-2 bg-[var(--system-green)] rounded-full animate-pulse" />
         </div>
         <p className="text-[12px] text-[var(--secondary-label)] leading-[18px]">
-          AI 营养师 Agent 模式：主动监控身体变化，体重波动时自动调整饮食建议。
+          AI 主动洞察：身体数据更新后分析变化，建议经你确认后再使用。
         </p>
       </div>
 
@@ -3048,7 +3053,7 @@ function FridgeView({
           <span className="absolute -top-0.5 -right-0.5 size-2 bg-[var(--system-green)] rounded-full animate-pulse" />
         </div>
         <p className="text-[12px] text-[var(--secondary-label)] leading-[18px]">
-          AI 营养师 Agent 模式：主动监控冰箱变化，临期食材优先消耗。
+          AI 主动洞察：冰箱数据更新后识别临期风险，并给出待确认建议。
         </p>
       </div>
 
@@ -3419,7 +3424,7 @@ function PlanView({
         <div className="flex items-start gap-3">
           <Zap className="size-5 text-[var(--system-blue)] shrink-0 mt-0.5" />
           <div>
-            <p className="text-[14px] font-semibold">AI 营养师 Agent</p>
+            <p className="text-[14px] font-semibold">AI 主动洞察</p>
             <p className="text-[12px] text-[var(--secondary-label)] mt-1 leading-[18px]">
               当你更新体重或冰箱食材时，AI 会主动分析变化并给出调整建议，不用你主动问。
             </p>
@@ -3492,7 +3497,7 @@ function CoachChatView({
       <div className="mx-4 mb-3 bg-[var(--system-blue)]/5 border border-[var(--system-blue)]/20 rounded-xl p-2.5 flex items-center gap-2">
         <Zap className="size-4 text-[var(--system-blue)] shrink-0" />
         <p className="text-[11px] text-[var(--secondary-label)] leading-[16px]">
-          Agent 模式已开启：我会主动关注你的身体和冰箱变化，有问题随时叫我～
+          主动洞察已开启：数据更新后我会分析变化，所有建议都由你决定是否采用。
         </p>
       </div>
 
