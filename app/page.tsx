@@ -108,10 +108,10 @@ const metrics = [
 
 // ===== 各指标的科学分级区间（常规健康参考，不构成医疗建议） =====
 const ZC = {
-  low: '#86EFAC',    // 偏低 / 不足 / 偏缓（浅绿）
-  norm: '#22C55E',   // 正常 / 标准 / 良好（健康绿）
-  high: '#4ADE80',   // 偏高 / 轻度超标（亮绿）
-  danger: '#D64545', // 明确健康风险保留语义红
+  low: '#3B82F6',    // 偏低 / 不足 → 蓝（信息提示）
+  norm: '#22C55E',   // 正常 / 良好 → 健康绿
+  high: '#F59E0B',   // 偏高 / 轻度超标 → 橙（提醒）
+  danger: '#EF4444', // 健康风险 → 红（危险）
 };
 
 type ZoneDef = { label: string; min: number; max: number; color: string };

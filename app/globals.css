@@ -86,16 +86,16 @@
   --tertiary-label: #9CA3AF;
   --quaternary-label: #D1D5DB;
 
-  /* 单主色系统：除风险红外，交互与数据色统一到健康绿 */
+  /* 健康绿主色 + 必要分级状态色（危险红/提醒橙/信息蓝等承载数据语义） */
   --system-green: #22C55E;
-  --system-red: #D64545;
-  --system-orange: #4ADE80;
-  --system-blue: #16A34A;
-  --system-yellow: #86EFAC;
-  --system-purple: #4ADE80;
-  --system-pink: #BBF7D0;
-  --system-teal: #22C55E;
-  --system-indigo: #16A34A;
+  --system-red: #EF4444;
+  --system-orange: #F59E0B;
+  --system-blue: #3B82F6;
+  --system-yellow: #EAB308;
+  --system-purple: #A855F7;
+  --system-pink: #EC4899;
+  --system-teal: #14B8A6;
+  --system-indigo: #6366F1;
 
   --system-gray: #718078;
   --system-gray2: #96A29B;
@@ -114,7 +114,7 @@
   --secondary-system-background: #F9FAFB;
   --tertiary-system-background: #FFFFFF;
 
-  --grouped-background: #FFFFFF;
+  --grouped-background: #ECFDF5;
   --secondary-grouped-background: #FFFFFF;
   --tertiary-grouped-background: #F0FDF4;
 
@@ -136,7 +136,7 @@
   --muted: var(--system-gray6);
   --accent: #16A34A;
   --accent-foreground: #FFFFFF;
-  --destructive: #D64545;
+  --destructive: #EF4444;
   --border: var(--opaque-separator);
   --input: var(--system-gray5);
   --ring: #22C55E;
@@ -145,7 +145,7 @@
   --chart-2: #4ADE80;
   --chart-3: #16A34A;
   --chart-4: #86EFAC;
-  --chart-5: #D64545;
+  --chart-5: #15803D;
 
   --radius: 10px;
 
@@ -455,10 +455,8 @@
   background-color: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(30px) saturate(150%);
   -webkit-backdrop-filter: blur(30px) saturate(150%);
-  border-top: 0.5px solid var(--separator);
   padding-bottom: env(safe-area-inset-bottom);
-  box-shadow: none;
-  border-top: 1px solid var(--separator);
+  border-top: 0.5px solid var(--separator);
 }
 
 .dark .ios-tab-bar {
