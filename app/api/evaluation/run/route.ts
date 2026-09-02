@@ -22,34 +22,43 @@ export async function POST(request: Request) {
   const settings = await getAiSettings(user.id);
   if (!settings) return Response.json({ error: '请先在个人中心配置 AI 服务。' }, { status: 503 });
 
-  const body = await request.json().catch(() => ({})) as { caseIds?: string[] };
-  const requestedIds = Array.isArray(body.caseIds) ? body.caseIds.slice(0, 8) : [];
+  const body = await request.json().catch(() => ({})) as { caseIds?: string[]; models?: string[] };
+  const requestedIds = Array.isArray(body.caseIds) ? body.caseIds.slice(0, 50) : [];
   const cases = EVALUATION_CASES.filter((item) => requestedIds.length === 0 || requestedIds.includes(item.id));
   if (cases.length === 0) return Response.json({ error: '没有可运行的评测用例。' }, { status: 400 });
 
-  const results = [];
-  for (const testCase of cases) {
-    try {
-      const response = await fetch(settings.endpoint, {
-        method: 'POST',
-        headers: { authorization: `Bearer ${settings.apiKey}`, 'content-type': 'application/json' },
-        body: JSON.stringify({
-          model: settings.model,
-          messages: [{ role: 'system', content: EVAL_SYSTEM_PROMPT }, { role: 'user', content: testCase.input }],
-          temperature: 0,
-          max_tokens: 500,
-        }),
-      });
-      const data = await response.json() as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } };
-      if (!response.ok) throw new Error(data.error?.message || '模型调用失败');
-      const answer = data.choices?.[0]?.message?.content?.trim() || '';
-      results.push({ ...testCase, answer, ...evaluateAnswer(answer, testCase.requiredAny, testCase.forbidden) });
-    } catch (error) {
-      results.push({ ...testCase, answer: '', passed: false, requiredHits: [], forbiddenHits: [], error: error instanceof Error ? error.message : '运行失败' });
+  const requestedModels = Array.isArray(body.models)
+    ? body.models.map((item) => String(item).trim()).filter(Boolean).slice(0, 3)
+    : [];
+  const models = [...new Set(requestedModels.length > 0 ? requestedModels : [settings.model])];
+  if (models.some((model) => model.length > 120)) return Response.json({ error: '模型名称过长。' }, { status: 400 });
+
+  const runs = [];
+  for (const model of models) {
+    const results = [];
+    for (const testCase of cases) {
+      try {
+        const response = await fetch(settings.endpoint, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${settings.apiKey}`, 'content-type': 'application/json' },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: 'system', content: EVAL_SYSTEM_PROMPT }, { role: 'user', content: testCase.input }],
+            temperature: 0,
+            max_tokens: 500,
+          }),
+        });
+        const data = await response.json() as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } };
+        if (!response.ok) throw new Error(data.error?.message || '模型调用失败');
+        const answer = data.choices?.[0]?.message?.content?.trim() || '';
+        results.push({ ...testCase, answer, ...evaluateAnswer(answer, testCase.requiredAny, testCase.forbidden) });
+      } catch (error) {
+        results.push({ ...testCase, answer: '', passed: false, requiredHits: [], forbiddenHits: [], error: error instanceof Error ? error.message : '运行失败' });
+      }
     }
+    const passed = results.filter((item) => item.passed).length;
+    runs.push({ model, total: results.length, passed, passRate: Math.round((passed / results.length) * 100), results });
   }
 
-  const passed = results.filter((item) => item.passed).length;
-  return Response.json({ model: settings.model, total: results.length, passed, passRate: Math.round((passed / results.length) * 100), results });
+  return Response.json({ runs, datasetSize: EVALUATION_CASES.length, selectedCases: cases.length });
 }
-
