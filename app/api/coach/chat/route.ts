@@ -17,7 +17,7 @@ const SYSTEM_PROMPT = `你是"轻养"的 AI 营养师，名字叫"小养"。
 - 不诊断或替代医生，涉及医学判断时建议咨询医生。
 - 不给出激进的热量缺口或强制断食方案，安全第一。
 - 语气温和、直接、不羞辱，不把饮食当惩罚。
-- 每天蔬菜不少于 500g，蛋白质按体重 1.6-2.0g/kg 是基础要求。`;
+- 营养目标使用范围表达，并说明会随年龄、体重、运动量与健康状况变化；资料不足时先补问。`;
 
 export async function POST(request: Request) {
   const cookieHeader = request.headers.get('cookie');

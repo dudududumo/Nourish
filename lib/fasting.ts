@@ -90,8 +90,8 @@ export function recommendFastingPlan(p: FastingProfileInput): Recommendation {
   const scr = p.screening || {};
   const warnings: string[] = [];
 
-  const hardStop = !!(scr.pregnancy || scr.breastfeeding || scr.eating_disorder);
-  const needDoctor = !!(scr.hypoglycemia || scr.diabetes || (scr.medication && scr.medication));
+  const hardStop = !!(scr.pregnancy || scr.breastfeeding || scr.eating_disorder || scr.hypoglycemia || scr.diabetes || scr.medication)
+    || (age !== null && (age < 18 || age > 65));
 
   if (!p.heightCm || !p.weightKg) {
     return {
@@ -101,7 +101,7 @@ export function recommendFastingPlan(p: FastingProfileInput): Recommendation {
   }
 
   if (hardStop) {
-    warnings.push('孕期、哺乳期或存在进食障碍史不建议进行任何形式的断食，请以规律均衡饮食为主。');
+    warnings.push('当前健康筛查结果不适合由应用自动推荐断食方案，请保持规律饮食并咨询专业医生或注册营养师。');
     return {
       ready: true, contraindicated: true, planHours: 0,
       level: 'beginner', reason: '当前情况不适合断食，建议保持三餐规律。', warnings, bmi, age,
@@ -120,13 +120,13 @@ export function recommendFastingPlan(p: FastingProfileInput): Recommendation {
     reasons.push('维持体重 14:10 已足够，兼顾代谢与生活节奏');
   } else if (p.goal === 'health') {
     hours = 16;
-    reasons.push('以细胞修复和代谢健康为目标，16:8 是经典窗口');
+    reasons.push('以规律作息和可持续执行为目标，采用常见的 16:8 窗口作为参考');
   } else {
     // fat_loss
     if (bmi !== null) {
       if (bmi >= 28) { hours = 14; reasons.push('BMI 偏高，先从 14:10 温和起步，避免过激反弹'); }
-      else if (bmi >= 24) { hours = 16; reasons.push('超重范围，16:8 制造温和热量缺口更易坚持'); }
-      else if (bmi >= 18.5) { hours = 16; reasons.push('正常体重，16:8 减脂同时保留肌肉'); }
+      else if (bmi >= 24) { hours = 16; reasons.push('BMI 偏高，采用相对温和的窗口并关注长期可持续性'); }
+      else if (bmi >= 18.5) { hours = 16; reasons.push('体重处于常见范围，优先保证规律饮食与蛋白质摄入'); }
       else { reasons.push('体重偏低，不建议长时间禁食'); warnings.push('BMI 低于 18.5，减脂前请先保证营养摄入与体重稳定。'); hours = 12; }
     } else {
       reasons.push('以 16:8 作为通用减脂窗口');
@@ -147,9 +147,6 @@ export function recommendFastingPlan(p: FastingProfileInput): Recommendation {
   if (p.sex === 'female' && hours >= 18) {
     warnings.push('长时间禁食可能影响部分女性的激素与经期节律，建议不超过 18 小时，经期前后适当缩短。');
   }
-  if (age !== null && age < 18) warnings.push('未成年人不建议断食，请先咨询医生。');
-  if (age !== null && age > 65) warnings.push('年长者请先咨询医生，谨慎进行断食。');
-  if (needDoctor) warnings.push('存在血糖/用药相关问题，断食前请务必咨询医生。');
 
   const level: Experience = hours <= 14 ? 'beginner' : hours <= 18 ? 'intermediate' : 'advanced';
 
@@ -174,8 +171,8 @@ export const FASTING_STAGES: FastingStage[] = [
   { key: 'fed', fromH: 0, toH: 4, title: '进食消化期', desc: '刚吃完，血糖上升，身体优先用葡萄糖供能。', accent: 'green' },
   { key: 'glycogen', fromH: 4, toH: 12, title: '糖原消耗期', desc: '肝糖原逐渐耗尽，血糖回落，身体开始切换燃料。', accent: 'blue' },
   { key: 'ketosis', fromH: 12, toH: 18, title: '燃脂生酮期', desc: '脂肪分解加速、生成酮体，进入较稳定的燃脂阶段。', accent: 'orange' },
-  { key: 'autophagy', fromH: 18, toH: 24, title: '自噬修复期', desc: '触发细胞自噬，清理受损细胞与错误折叠蛋白。', accent: 'pink' },
-  { key: 'deep', fromH: 24, toH: 999, title: '深度断食', desc: '自噬进一步增强，需在专业指导下进行。', accent: 'red' },
+  { key: 'autophagy', fromH: 18, toH: 24, title: '延长禁食期', desc: '人体反应因人而异，不以固定小时数承诺特定细胞效应。', accent: 'pink' },
+  { key: 'deep', fromH: 24, toH: 999, title: '长时间禁食', desc: '风险与不确定性增加，不建议在缺少专业指导时尝试。', accent: 'red' },
 ];
 
 export function currentStage(elapsedMinutes: number): { stage: FastingStage; progressInStage: number } {
