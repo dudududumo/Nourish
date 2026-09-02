@@ -81,21 +81,21 @@
   --font-sf-rounded: -apple-system, BlinkMacSystemFont, 'SF Pro Rounded', 'SF Pro Display', 'Helvetica Neue', Arial, sans-serif;
 
   /* 清爽白绿：高对比中性文字 */
-  --label: #17251D;
-  --secondary-label: rgba(23, 37, 29, 0.62);
-  --tertiary-label: rgba(23, 37, 29, 0.38);
-  --quaternary-label: rgba(23, 37, 29, 0.18);
+  --label: #111827;
+  --secondary-label: #6B7280;
+  --tertiary-label: #9CA3AF;
+  --quaternary-label: #D1D5DB;
 
   /* 单主色系统：除风险红外，交互与数据色统一到健康绿 */
-  --system-green: #22A06B;
+  --system-green: #22C55E;
   --system-red: #D64545;
-  --system-orange: #4EAD7E;
-  --system-blue: #278F63;
-  --system-yellow: #75B893;
-  --system-purple: #5BAA7E;
-  --system-pink: #86C3A1;
-  --system-teal: #389B70;
-  --system-indigo: #187A52;
+  --system-orange: #4ADE80;
+  --system-blue: #16A34A;
+  --system-yellow: #86EFAC;
+  --system-purple: #4ADE80;
+  --system-pink: #BBF7D0;
+  --system-teal: #22C55E;
+  --system-indigo: #16A34A;
 
   --system-gray: #718078;
   --system-gray2: #96A29B;
@@ -104,23 +104,23 @@
   --system-gray5: #E9EEEB;
   --system-gray6: #F5F8F6;
 
-  /* 暖沙填充 */
-  --fill: rgba(124, 152, 124, 0.18);
-  --secondary-fill: rgba(124, 152, 124, 0.13);
-  --tertiary-fill: rgba(124, 152, 124, 0.09);
-  --quaternary-fill: rgba(124, 152, 124, 0.06);
+  /* 极浅绿填充 */
+  --fill: rgba(34, 197, 94, 0.14);
+  --secondary-fill: rgba(34, 197, 94, 0.10);
+  --tertiary-fill: rgba(34, 197, 94, 0.07);
+  --quaternary-fill: rgba(34, 197, 94, 0.04);
 
   --background: #FFFFFF;
-  --secondary-system-background: #F7FAF8;
+  --secondary-system-background: #F9FAFB;
   --tertiary-system-background: #FFFFFF;
 
-  --grouped-background: #F7FAF8;
+  --grouped-background: #FFFFFF;
   --secondary-grouped-background: #FFFFFF;
-  --tertiary-grouped-background: #F2F7F4;
+  --tertiary-grouped-background: #F0FDF4;
 
   /* 分隔线 */
-  --separator: rgba(23, 37, 29, 0.10);
-  --opaque-separator: #DFE7E2;
+  --separator: rgba(17, 24, 39, 0.08);
+  --opaque-separator: #E5E7EB;
 
   /* shadcn 兼容别名 */
   --foreground: var(--label);
@@ -129,113 +129,43 @@
   --card-foreground: var(--label);
   --popover: var(--secondary-grouped-background);
   --popover-foreground: var(--label);
-  --primary: #22A06B;
+  --primary: #22C55E;
   --primary-foreground: #FFFFFF;
   --secondary: var(--secondary-fill);
   --secondary-foreground: var(--label);
   --muted: var(--system-gray6);
-  --accent: #278F63;
+  --accent: #16A34A;
   --accent-foreground: #FFFFFF;
   --destructive: #D64545;
   --border: var(--opaque-separator);
   --input: var(--system-gray5);
-  --ring: #22A06B;
+  --ring: #22C55E;
 
-  --chart-1: #22A06B;
-  --chart-2: #4EAD7E;
-  --chart-3: #75B893;
-  --chart-4: #187A52;
+  --chart-1: #22C55E;
+  --chart-2: #4ADE80;
+  --chart-3: #16A34A;
+  --chart-4: #86EFAC;
   --chart-5: #D64545;
 
   --radius: 10px;
 
   --sidebar: var(--system-gray6);
   --sidebar-foreground: var(--label);
-  --sidebar-primary: #22A06B;
+  --sidebar-primary: #22C55E;
   --sidebar-primary-foreground: #FFFFFF;
   --sidebar-accent: var(--system-gray5);
   --sidebar-accent-foreground: var(--label);
   --sidebar-border: var(--separator);
-  --sidebar-ring: #22A06B;
+  --sidebar-ring: #22C55E;
 
-  /* 自然质感动效与暖色柔影 */
+  /* 轻缓动效；全站扁平无投影 */
   --ease-natural: cubic-bezier(0.32, 0.72, 0, 1);
-  --shadow-soft: 0 1px 2px rgba(23, 37, 29, 0.04);
-  --shadow-float: 0 8px 24px rgba(23, 37, 29, 0.08);
+  --shadow-soft: none;
+  --shadow-float: none;
 }
 
 .dark {
-  /* 自然质感深色 */
-  --label: #F2EEE3;
-  --secondary-label: rgba(242, 238, 227, 0.62);
-  --tertiary-label: rgba(242, 238, 227, 0.34);
-  --quaternary-label: rgba(242, 238, 227, 0.18);
-
-  --system-green: #8FA98F;
-  --system-red: #D98A7C;
-  --system-orange: #E0AE6E;
-  --system-blue: #7BA6B2;
-  --system-yellow: #E0AE6E;
-  --system-purple: #9DAB8A;
-  --system-pink: #D99A8C;
-  --system-teal: #7BA6B2;
-  --system-indigo: #7BA6B2;
-
-  --system-gray: #8C8C82;
-  --system-gray2: #686860;
-  --system-gray3: #54534C;
-  --system-gray4: #43423C;
-  --system-gray5: #34332E;
-  --system-gray6: #26251F;
-
-  --fill: rgba(143, 169, 143, 0.30);
-  --secondary-fill: rgba(143, 169, 143, 0.24);
-  --tertiary-fill: rgba(143, 169, 143, 0.18);
-  --quaternary-fill: rgba(143, 169, 143, 0.12);
-
-  --background: #221F18;
-  --secondary-system-background: #26231B;
-  --tertiary-system-background: #2B2820;
-
-  --grouped-background: #221F18;
-  --secondary-grouped-background: #2B2820;
-  --tertiary-grouped-background: #221F18;
-
-  --separator: rgba(242, 238, 227, 0.16);
-  --opaque-separator: #3A372E;
-
-  --foreground: var(--label);
-  --muted-foreground: var(--secondary-label);
-  --card: var(--secondary-grouped-background);
-  --card-foreground: var(--label);
-  --popover: var(--secondary-grouped-background);
-  --popover-foreground: var(--label);
-  --primary: #8FA98F;
-  --primary-foreground: #1C1A14;
-  --secondary: var(--secondary-fill);
-  --secondary-foreground: var(--label);
-  --muted: var(--system-gray6);
-  --accent: #7BA6B2;
-  --accent-foreground: #1C1A14;
-  --destructive: #D98A7C;
-  --border: var(--opaque-separator);
-  --input: var(--system-gray5);
-  --ring: #8FA98F;
-
-  --chart-1: #8FA98F;
-  --chart-2: #7BA6B2;
-  --chart-3: #E0AE6E;
-  --chart-4: #9DAB8A;
-  --chart-5: #D98A7C;
-
-  --sidebar: var(--system-gray6);
-  --sidebar-foreground: var(--label);
-  --sidebar-primary: #8FA98F;
-  --sidebar-primary-foreground: #1C1A14;
-  --sidebar-accent: var(--system-gray5);
-  --sidebar-accent-foreground: var(--label);
-  --sidebar-border: var(--separator);
-  --sidebar-ring: #8FA98F;
+  color-scheme: light;
 }
 
 @layer base {
@@ -248,10 +178,7 @@
 
   body {
     background-color: var(--grouped-background);
-    background-image:
-      radial-gradient(1100px 520px at 50% -8%, rgba(255, 252, 244, 0.6), transparent 62%),
-      linear-gradient(180deg, rgba(248, 244, 233, 0.7) 0%, rgba(244, 239, 227, 0.7) 100%);
-    background-attachment: fixed;
+    background-image: none;
     color: var(--label);
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
@@ -260,14 +187,16 @@
   }
 
   .dark body {
-    background-image:
-      radial-gradient(1100px 560px at 50% -8%, rgba(143, 169, 143, 0.10), transparent 62%),
-      linear-gradient(180deg, #2B2820 0%, #1F1C16 100%);
+    background-image: none;
   }
 
   * {
     border-color: var(--separator);
     outline-color: var(--ring);
+  }
+
+  [class*='shadow-'], .shadow {
+    box-shadow: none !important;
   }
 }
 
@@ -353,57 +282,57 @@
 }
 
 /* ============================================ */
-/* Natural Materials - Warm Frosted Glass       */
+/* Neutral iOS materials                        */
 /* ============================================ */
 
 .ultra-thin-material {
-  background-color: rgba(248, 244, 233, 0.08);
+  background-color: rgba(255, 255, 255, 0.72);
   backdrop-filter: blur(20px) saturate(150%);
   -webkit-backdrop-filter: blur(20px) saturate(150%);
 }
 
 .thin-material {
-  background-color: rgba(248, 244, 233, 0.18);
+  background-color: rgba(255, 255, 255, 0.78);
   backdrop-filter: blur(25px) saturate(150%);
   -webkit-backdrop-filter: blur(25px) saturate(150%);
 }
 
 .regular-material {
-  background-color: rgba(248, 244, 233, 0.45);
+  background-color: rgba(255, 255, 255, 0.84);
   backdrop-filter: blur(30px) saturate(150%);
   -webkit-backdrop-filter: blur(30px) saturate(150%);
 }
 
 .thick-material {
-  background-color: rgba(248, 244, 233, 0.65);
+  background-color: rgba(255, 255, 255, 0.90);
   backdrop-filter: blur(40px) saturate(150%);
   -webkit-backdrop-filter: blur(40px) saturate(150%);
 }
 
 .ultra-thick-material {
-  background-color: rgba(248, 244, 233, 0.8);
+  background-color: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(50px) saturate(150%);
   -webkit-backdrop-filter: blur(50px) saturate(150%);
 }
 
 .dark .ultra-thin-material {
-  background-color: rgba(43, 40, 32, 0.30);
+  background-color: rgba(255, 255, 255, 0.72);
 }
 
 .dark .thin-material {
-  background-color: rgba(43, 40, 32, 0.40);
+  background-color: rgba(255, 255, 255, 0.78);
 }
 
 .dark .regular-material {
-  background-color: rgba(43, 40, 32, 0.55);
+  background-color: rgba(255, 255, 255, 0.84);
 }
 
 .dark .thick-material {
-  background-color: rgba(43, 40, 32, 0.70);
+  background-color: rgba(255, 255, 255, 0.90);
 }
 
 .dark .ultra-thick-material {
-  background-color: rgba(43, 40, 32, 0.80);
+  background-color: rgba(255, 255, 255, 0.96);
 }
 
 /* ============================================ */
@@ -471,7 +400,7 @@
   border-radius: 16px;
   overflow: hidden;
   position: relative;
-  box-shadow: var(--shadow-soft);
+  box-shadow: none;
 }
 
 .ios-card::after {
@@ -491,7 +420,7 @@
   position: sticky;
   top: 0;
   z-index: 100;
-  background-color: rgba(244, 239, 227, 0.8);
+  background-color: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(20px) saturate(150%);
   -webkit-backdrop-filter: blur(20px) saturate(150%);
   border-bottom: 0.5px solid var(--separator);
@@ -523,7 +452,7 @@
   left: 0;
   right: 0;
   z-index: 100;
-  background-color: rgba(248, 244, 233, 0.88);
+  background-color: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(30px) saturate(150%);
   -webkit-backdrop-filter: blur(30px) saturate(150%);
   border-top: 0.5px solid var(--separator);
@@ -533,7 +462,7 @@
 }
 
 .dark .ios-tab-bar {
-  background-color: rgba(34, 31, 24, 0.88);
+  background-color: rgba(255, 255, 255, 0.94);
 }
 
 .ios-tab-item {
@@ -573,7 +502,7 @@
   letter-spacing: -0.008em;
   border-radius: 12px;
   padding: 12px 20px;
-  transition: filter 0.2s var(--ease-natural), transform 0.12s var(--ease-natural), box-shadow 0.2s var(--ease-natural);
+  transition: filter 0.2s var(--ease-natural), transform 0.2s var(--ease-natural);
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
@@ -591,7 +520,7 @@
 .ios-button-filled {
   background-color: var(--primary);
   color: #FFFFFF;
-  box-shadow: var(--shadow-soft);
+  box-shadow: none;
 }
 
 .ios-button-gray {
@@ -636,7 +565,8 @@
   height: 27px;
   border-radius: 50%;
   background-color: #FFFFFF;
-  box-shadow: 0 3px 8px rgba(90, 80, 60, 0.18), 0 1px 1px rgba(90, 80, 60, 0.10);
+  box-shadow: none;
+  border: 1px solid var(--separator);
   transition: transform 0.22s var(--ease-natural);
 }
 
@@ -715,7 +645,7 @@
   position: fixed;
   inset: 0;
   z-index: 200;
-  background-color: rgba(40, 36, 26, 0.34);
+  background-color: rgba(17, 24, 39, 0.28);
   backdrop-filter: blur(10px) saturate(150%);
   -webkit-backdrop-filter: blur(10px) saturate(150%);
   opacity: 0;
@@ -764,7 +694,7 @@
   position: fixed;
   inset: 0;
   z-index: 300;
-  background-color: rgba(40, 36, 26, 0.34);
+  background-color: rgba(17, 24, 39, 0.28);
   backdrop-filter: blur(10px) saturate(150%);
   -webkit-backdrop-filter: blur(10px) saturate(150%);
   display: flex;
@@ -780,11 +710,12 @@
 
 .ios-alert {
   width: 270px;
-  background-color: rgba(248, 244, 233, 0.9);
+  background-color: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(30px) saturate(150%);
   -webkit-backdrop-filter: blur(30px) saturate(150%);
   border-radius: 22px;
-  box-shadow: var(--shadow-float);
+  box-shadow: none;
+  border: 1px solid var(--separator);
   overflow: hidden;
   transform: scale(1.06);
   opacity: 0;
@@ -792,7 +723,7 @@
 }
 
 .dark .ios-alert {
-  background-color: rgba(40, 37, 29, 0.9);
+  background-color: rgba(255, 255, 255, 0.96);
 }
 
 .ios-alert-overlay.open .ios-alert {
@@ -817,7 +748,8 @@
   background-color: var(--secondary-grouped-background);
   color: var(--primary);
   font-weight: 600;
-  box-shadow: 0 1px 4px rgba(90, 80, 60, 0.14);
+  box-shadow: none;
+  border: 1px solid var(--separator);
 }
 
 /* ============================================ */
@@ -884,18 +816,18 @@
 }
 
 /* ============================================ */
-/* Fridge 3D Scene Styles（自然质感调整）       */
+/* Fridge 3D Scene Styles（白绿扁平）           */
 /* ============================================ */
 
 .fridge-scene { perspective: 900px; display: grid; place-items: center; }
 .fridge-body { width: 210px; height: 400px; position: relative; transform: rotateY(-7deg); transform-style: preserve-3d; }
-.fridge-cavity { position: absolute; inset: 0; border: 10px solid #dfe3d8; border-radius: 18px; background: linear-gradient(145deg,#f8f6ee,#ccd4c8); box-shadow: inset 0 0 35px #9aa79a, 0 30px 50px rgba(90, 80, 60,.30); overflow: hidden; }
-.fridge-cavity::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg,transparent,rgba(248,244,233,.5),transparent); pointer-events: none; }
-.fridge-shelf { position: absolute; left: 8%; right: 8%; height: 74px; border-bottom: 5px solid rgba(124, 152, 124,.40); display: flex; justify-content: space-evenly; align-items: end; padding-bottom: 8px; font-size: 36px; filter: drop-shadow(0 5px 5px rgba(90,80,60,.18)); }
-.fridge-door { position: absolute; inset: 0; border: 0; border-radius: 18px; background: linear-gradient(115deg,#f6f3e9 0%,#d9ddcd 50%,#b7c0b2 100%); box-shadow: 8px 18px 35px rgba(90,80,60,.34); transform-origin: left center; transform: rotateY(0deg); transition: transform .72s cubic-bezier(.2,.8,.2,1); backface-visibility: visible; cursor: pointer; }
+.fridge-cavity { position: absolute; inset: 0; border: 10px solid #DCFCE7; border-radius: 18px; background: #F0FDF4; box-shadow: none; overflow: hidden; }
+.fridge-cavity::after { content: ''; position: absolute; inset: 0; background: none; pointer-events: none; }
+.fridge-shelf { position: absolute; left: 8%; right: 8%; height: 74px; border-bottom: 4px solid #86EFAC; display: flex; justify-content: space-evenly; align-items: end; padding-bottom: 8px; font-size: 36px; filter: none; }
+.fridge-door { position: absolute; inset: 0; border: 1px solid #BBF7D0; border-radius: 18px; background: #FFFFFF; box-shadow: none; transform-origin: left center; transform: rotateY(0deg); transition: transform .72s var(--ease-natural); backface-visibility: visible; cursor: pointer; }
 .fridge-door.is-open { transform: rotateY(-112deg); }
-.fridge-handle { position: absolute; right: 15px; top: 48px; width: 6px; height: 110px; border-radius: 99px; background: #8a9484; box-shadow: inset 1px 1px 2px #f6f3e9; }
-.fridge-brand { position: absolute; left: 24px; top: 25px; color: #6c756b; font-size: 8px; letter-spacing: .18em; font-weight: 700; }
+.fridge-handle { position: absolute; right: 15px; top: 48px; width: 6px; height: 110px; border-radius: 99px; background: #22C55E; box-shadow: none; }
+.fridge-brand { position: absolute; left: 24px; top: 25px; color: #16A34A; font-size: 8px; letter-spacing: .18em; font-weight: 700; }
 
 /* ============================================ */
 /* Scroll styling                               */
