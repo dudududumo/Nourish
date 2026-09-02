@@ -11,7 +11,8 @@
 #   CLOUDFLARE_D1_NAME=xxx            D1 数据库名，默认 nourish
 #   CLOUDFLARE_D1_DATABASE_ID=xxx     已有 D1 库则直接复用，跳过自动创建
 #   CLOUDFLARE_WORKER_NAME=xxx        Worker 名，默认 nourish-backend
-#   CLOUDFLARE_CONFIG_ENCRYPTION_KEY=xxx  给 AI 密钥加密用的 32 字节密钥（首次部署建议设置）
+#   CLOUDFLARE_CONFIG_ENCRYPTION_KEY=xxx  给 AI 密钥加密用的密钥（生产环境必须设置）
+#   INITIALIZE_D1=1                    仅新数据库首次部署时执行全部迁移
 set -euo pipefail
 
 D1_NAME="${CLOUDFLARE_D1_NAME:-nourish}"
@@ -52,20 +53,24 @@ fs.writeFileSync(process.env.CONFIG_PATH, JSON.stringify(c));
 console.log("   worker:", c.name, "-> d1:", c.d1_databases[0].database_id);
 '
 
-echo "==> 应用数据库迁移（drizzle/*.sql 按序执行）"
-for f in drizzle/*.sql; do
-  [ -e "$f" ] || continue
-  echo "   apply $f"
-  npx wrangler d1 execute DB --remote --file="$f" --config "$CONFIG"
-done
+if [ "${INITIALIZE_D1:-0}" = "1" ]; then
+  echo "==> 初始化新数据库（drizzle/*.sql 按序执行）"
+  for f in drizzle/*.sql; do
+    [ -e "$f" ] || continue
+    echo "   apply $f"
+    npx wrangler d1 execute DB --remote --file="$f" --config "$CONFIG"
+  done
+else
+  echo "ℹ️  保留现有 D1 数据，不重复执行历史迁移。新数据库首次部署请设置 INITIALIZE_D1=1。"
+fi
 
-# 可选：设置 AI 密钥加密密钥（首次部署强烈建议）
+# 设置 AI 密钥加密密钥
 if [ -n "${CLOUDFLARE_CONFIG_ENCRYPTION_KEY:-}" ]; then
   echo "==> 写入 CONFIG_ENCRYPTION_KEY 到 Worker secrets"
   printf '%s' "$CLOUDFLARE_CONFIG_ENCRYPTION_KEY" | npx wrangler secret put CONFIG_ENCRYPTION_KEY --config "$CONFIG"
 else
-  echo "ℹ️  未设置 CLOUDFLARE_CONFIG_ENCRYPTION_KEY，AI 密钥将使用开发兜底密钥加密。"
-  echo "   建议（可选，生成 32 字节随机串并写入）:"
+  echo "ℹ️  本次未更新 CONFIG_ENCRYPTION_KEY，将继续使用 Worker 中已有的安全密钥。"
+  echo "   若尚未设置，请先执行："
   echo "     openssl rand -base64 32 | npx wrangler secret put CONFIG_ENCRYPTION_KEY --config $CONFIG"
 fi
 
