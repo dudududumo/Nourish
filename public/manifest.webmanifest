@@ -4,8 +4,8 @@
   "description": "你的 AI 营养、冰箱库存与低冲击训练系统",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f2f2f7",
-  "theme_color": "#174f3c",
+  "background_color": "#ffffff",
+  "theme_color": "#22a06b",
   "orientation": "portrait-primary",
   "icons": [
     { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }

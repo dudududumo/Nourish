@@ -47,7 +47,7 @@ export default function LoginPage() {
       <div className="w-full max-w-[360px]">
         {/* Logo & Title */}
         <div className="text-center mb-10">
-          <div className="inline-flex size-16 rounded-2xl bg-[var(--system-green)] text-white items-center justify-center mb-4 shadow-lg shadow-green-500/30">
+          <div className="inline-flex size-16 rounded-2xl bg-[var(--system-green)] text-white items-center justify-center mb-4">
             <Leaf className="size-8" />
           </div>
           <h1 className="text-[28px] font-bold tracking-tight">轻养</h1>
@@ -59,7 +59,7 @@ export default function LoginPage() {
           <button
             className={`flex-1 py-2 rounded-lg text-[14px] font-medium transition-all ${
               mode === 'login'
-                ? 'bg-[var(--secondary-grouped-background)] text-[var(--label)] shadow-sm'
+                ? 'bg-[var(--secondary-grouped-background)] text-[var(--label)]'
                 : 'text-[var(--secondary-label)]'
             }`}
             onClick={() => { setMode('login'); setError(''); }}
@@ -69,7 +69,7 @@ export default function LoginPage() {
           <button
             className={`flex-1 py-2 rounded-lg text-[14px] font-medium transition-all ${
               mode === 'register'
-                ? 'bg-[var(--secondary-grouped-background)] text-[var(--label)] shadow-sm'
+                ? 'bg-[var(--secondary-grouped-background)] text-[var(--label)]'
                 : 'text-[var(--secondary-label)]'
             }`}
             onClick={() => { setMode('register'); setError(''); }}
