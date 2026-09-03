@@ -51,6 +51,36 @@ export const aiSettings = sqliteTable('ai_settings', {
   updatedAt: text('updated_at').notNull(),
 });
 
+/* ===== AI Evaluation Evidence ===== */
+
+export const evaluationRuns = sqliteTable('evaluation_runs', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  model: text('model').notNull(),
+  scope: text('scope').notNull(),
+  total: integer('total').notNull(),
+  passed: integer('passed').notNull(),
+  passRate: integer('pass_rate').notNull(),
+  createdAt: text('created_at').notNull(),
+}, (table) => [index('idx_evaluation_runs_user_date').on(table.userId, table.createdAt)]);
+
+export const evaluationResults = sqliteTable('evaluation_results', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  runId: text('run_id').notNull(),
+  caseId: text('case_id').notNull(),
+  category: text('category').notNull(),
+  severity: text('severity').notNull(),
+  passed: integer('passed').notNull(),
+  answer: text('answer').notNull().default(''),
+  requiredHitsJson: text('required_hits_json').notNull().default('[]'),
+  forbiddenHitsJson: text('forbidden_hits_json').notNull().default('[]'),
+  error: text('error'),
+  createdAt: text('created_at').notNull(),
+}, (table) => [
+  index('idx_evaluation_results_run').on(table.runId),
+  index('idx_evaluation_results_case').on(table.caseId),
+]);
+
 /* ===== Weekly Meal Plan (structured) ===== */
 
 export const weeklyPlans = sqliteTable('weekly_plans', {

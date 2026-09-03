@@ -13,7 +13,7 @@ type RunResult = typeof EVALUATION_CASES[number] & {
   error?: string;
 };
 
-type ModelRun = { model: string; passed: number; total: number; passRate: number; results: RunResult[] };
+type ModelRun = { runId?: string; model: string; passed: number; total: number; passRate: number; results: RunResult[] };
 type EvaluationResponse = {
   runs?: ModelRun[];
   datasetSize?: number;
@@ -40,6 +40,17 @@ export default function EvaluationPage() {
 
   useEffect(() => {
     try { setHistory(JSON.parse(localStorage.getItem('nourish-eval-history') || '[]')); } catch { setHistory([]); }
+    void fetch('/api/evaluation/run', { headers: { accept: 'application/json' } })
+      .then(async (response) => {
+        const text = await response.text();
+        if (!response.ok || !text.trim()) return null;
+        return JSON.parse(text) as { runs?: Array<{ model: string; passed: number; total: number; passRate: number; createdAt: string }> };
+      })
+      .then((data) => {
+        if (!data?.runs?.length) return;
+        setHistory(data.runs.slice(0, 5).map((run) => ({ model: run.model, passed: run.passed, total: run.total, passRate: run.passRate, ranAt: run.createdAt })));
+      })
+      .catch(() => undefined);
   }, []);
 
   async function runEvaluation() {

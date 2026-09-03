@@ -22,6 +22,21 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="zh-CN" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: `
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function (registrations) {
+              registrations.forEach(function (registration) { registration.unregister(); });
+            });
+          }
+          if ('caches' in window) {
+            caches.keys().then(function (keys) {
+              keys.filter(function (key) { return key.indexOf('nourish-') === 0; })
+                .forEach(function (key) { caches.delete(key); });
+            });
+          }
+        ` }} />
+      </head>
       <body className="antialiased">{children}</body>
     </html>
   );
