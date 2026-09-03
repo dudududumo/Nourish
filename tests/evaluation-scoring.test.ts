@@ -30,3 +30,17 @@ test('结构化输出必须是合法 JSON 且包含必填字段', () => {
   assert.equal(invalid.jsonValid, false);
   assert.deepEqual(invalid.missingJsonKeys, ['days', 'rationale']);
 });
+
+test('结构化输出检查数组中的必填路径，且不误伤短 JSON', () => {
+  const valid = evaluateAnswer('{"items":[{"name":"鸡胸肉","amount":"300g"}]}', ['items', 'name', 'amount'], [], {
+    responseFormat: 'json', requiredJsonKeys: ['items'], requiredJsonPaths: ['items.0.name', 'items.0.amount'],
+  });
+  assert.equal(valid.passed, true);
+  assert.deepEqual(valid.missingJsonPaths, []);
+
+  const empty = evaluateAnswer('{"items":[]}', ['items'], [], {
+    responseFormat: 'json', requiredJsonKeys: ['items'], requiredJsonPaths: ['items.0.name', 'items.0.amount'],
+  });
+  assert.equal(empty.passed, false);
+  assert.deepEqual(empty.missingJsonPaths, ['items.0.name', 'items.0.amount']);
+});

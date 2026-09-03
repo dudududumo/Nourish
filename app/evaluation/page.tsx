@@ -12,10 +12,15 @@ type RunResult = typeof EVALUATION_CASES[number] & {
   forbiddenHits: string[];
   jsonValid?: boolean;
   missingJsonKeys?: string[];
+  missingJsonPaths?: string[];
+  durationMs?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
   error?: string;
 };
 
-type ModelRun = { runId?: string; model: string; passed: number; total: number; passRate: number; results: RunResult[]; persistenceWarning?: string };
+type ModelRun = { runId?: string; model: string; passed: number; total: number; passRate: number; durationMs?: number; totalTokens?: number; datasetVersion?: string; promptVersion?: string; results: RunResult[]; persistenceWarning?: string };
 type EvaluationResponse = {
   runs?: ModelRun[];
   datasetSize?: number;
@@ -141,6 +146,7 @@ export default function EvaluationPage() {
             <p className="text-xs text-[var(--secondary-label)]">本轮结果</p>
             <div className="mt-2 flex items-end gap-2"><strong className="text-4xl">{summary ? `${summary.passRate}%` : '—'}</strong><span className="pb-1 text-sm text-[var(--secondary-label)]">通过率</span></div>
             <p className="mt-2 text-xs text-[var(--secondary-label)]">{summary ? `${summary.model} · ${summary.passed}/${summary.total} 通过` : '运行后显示真实结果，不预填演示数据'}</p>
+            {summary && (() => { const active = runs.find((run) => run.model === activeModel); return <p className="mt-1 text-[11px] text-[var(--tertiary-label)]">{active?.durationMs != null ? `${(active.durationMs / 1000).toFixed(1)} 秒` : '耗时未知'} · {active?.totalTokens ? `${active.totalTokens.toLocaleString()} tokens` : '服务商未返回 token'} · {active?.datasetVersion ?? '未记录数据集版本'}</p>; })()}
             <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl bg-[#F0FDF4] p-1 text-xs font-semibold">
               <button onClick={() => setRunScope('smoke')} className={`rounded-xl px-2 py-2 ${runScope === 'smoke' ? 'bg-white text-[var(--system-green)] border border-[#DCFCE7]' : 'text-[var(--secondary-label)]'}`}>冒烟集 · {SMOKE_CASE_IDS.length}</button>
               <button onClick={() => setRunScope('regression')} className={`rounded-xl px-2 py-2 ${runScope === 'regression' ? 'bg-white text-[var(--system-green)] border border-[#DCFCE7]' : 'text-[var(--secondary-label)]'}`}>回归集 · {EVALUATION_CASES.length}</button>
@@ -178,7 +184,7 @@ export default function EvaluationPage() {
                 </div>
                 <p className="mt-4 rounded-2xl bg-[var(--system-gray6)] p-4 text-sm leading-6">“{testCase.input}”</p>
                 <p className="mt-3 text-xs leading-5 text-[var(--secondary-label)]">评测依据：{testCase.rationale}</p>
-                {result && <div className="mt-4 border-t border-[var(--separator)] pt-4"><div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold text-[var(--secondary-label)]">模型回答</p><div className="flex gap-1"><button aria-label="人工复核通过" onClick={() => void reviewCase(testCase.id, 'approved')} className={`rounded-lg p-1.5 ${manualReview[`${activeModel}:${testCase.id}`] === 'approved' ? 'bg-[var(--system-green)] text-white' : 'bg-[var(--system-gray6)] text-[var(--secondary-label)]'}`}><ThumbsUp className="size-3.5" /></button><button aria-label="人工复核不通过" onClick={() => void reviewCase(testCase.id, 'rejected')} className={`rounded-lg p-1.5 ${manualReview[`${activeModel}:${testCase.id}`] === 'rejected' ? 'bg-[var(--system-red)] text-white' : 'bg-[var(--system-gray6)] text-[var(--secondary-label)]'}`}><ThumbsDown className="size-3.5" /></button></div></div><p className="mt-2 whitespace-pre-wrap text-sm leading-6">{result.error || result.answer}</p>{result.jsonValid === false && <p className="mt-2 text-xs text-[var(--system-red)]">结构化输出无法解析为 JSON</p>}{(result.missingJsonKeys?.length ?? 0) > 0 && <p className="mt-2 text-xs text-[var(--system-red)]">缺少字段：{result.missingJsonKeys?.join('、')}</p>}{result.forbiddenHits.length > 0 && <p className="mt-2 text-xs text-[var(--system-red)]">命中风险表达：{result.forbiddenHits.join('、')}</p>}</div>}
+                {result && <div className="mt-4 border-t border-[var(--separator)] pt-4"><div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold text-[var(--secondary-label)]">模型回答{result.durationMs != null ? ` · ${(result.durationMs / 1000).toFixed(1)} 秒` : ''}{result.totalTokens ? ` · ${result.totalTokens} tokens` : ''}</p><div className="flex gap-1"><button aria-label="人工复核通过" onClick={() => void reviewCase(testCase.id, 'approved')} className={`rounded-lg p-1.5 ${manualReview[`${activeModel}:${testCase.id}`] === 'approved' ? 'bg-[var(--system-green)] text-white' : 'bg-[var(--system-gray6)] text-[var(--secondary-label)]'}`}><ThumbsUp className="size-3.5" /></button><button aria-label="人工复核不通过" onClick={() => void reviewCase(testCase.id, 'rejected')} className={`rounded-lg p-1.5 ${manualReview[`${activeModel}:${testCase.id}`] === 'rejected' ? 'bg-[var(--system-red)] text-white' : 'bg-[var(--system-gray6)] text-[var(--secondary-label)]'}`}><ThumbsDown className="size-3.5" /></button></div></div><p className="mt-2 whitespace-pre-wrap text-sm leading-6">{result.error || result.answer}</p>{result.jsonValid === false && <p className="mt-2 text-xs text-[var(--system-red)]">结构化输出无法解析为 JSON</p>}{(result.missingJsonKeys?.length ?? 0) > 0 && <p className="mt-2 text-xs text-[var(--system-red)]">缺少顶层字段：{result.missingJsonKeys?.join('、')}</p>}{(result.missingJsonPaths?.length ?? 0) > 0 && <p className="mt-2 text-xs text-[var(--system-red)]">缺少嵌套字段：{result.missingJsonPaths?.join('、')}</p>}{result.forbiddenHits.length > 0 && <p className="mt-2 text-xs text-[var(--system-red)]">命中风险表达：{result.forbiddenHits.join('、')}</p>}</div>}
               </article>;
             })}
           </div>

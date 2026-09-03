@@ -61,6 +61,10 @@ export const evaluationRuns = sqliteTable('evaluation_runs', {
   total: integer('total').notNull(),
   passed: integer('passed').notNull(),
   passRate: integer('pass_rate').notNull(),
+  datasetVersion: text('dataset_version'),
+  promptVersion: text('prompt_version'),
+  durationMs: integer('duration_ms'),
+  totalTokens: integer('total_tokens'),
   createdAt: text('created_at').notNull(),
 }, (table) => [index('idx_evaluation_runs_user_date').on(table.userId, table.createdAt)]);
 
@@ -77,6 +81,10 @@ export const evaluationResults = sqliteTable('evaluation_results', {
   error: text('error'),
   manualReview: text('manual_review'),
   reviewedAt: text('reviewed_at'),
+  durationMs: integer('duration_ms'),
+  promptTokens: integer('prompt_tokens'),
+  completionTokens: integer('completion_tokens'),
+  totalTokens: integer('total_tokens'),
   createdAt: text('created_at').notNull(),
 }, (table) => [
   index('idx_evaluation_results_run').on(table.runId),

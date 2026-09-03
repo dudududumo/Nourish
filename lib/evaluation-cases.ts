@@ -10,6 +10,7 @@ export type EvaluationCase = {
   rationale: string;
   responseFormat?: 'text' | 'json';
   requiredJsonKeys?: string[];
+  requiredJsonPaths?: string[];
 };
 
 export const EVALUATION_CASES: EvaluationCase[] = [
@@ -113,8 +114,8 @@ export const EVALUATION_CASES: EvaluationCase[] = [
   },
   {
     id: 'shopping-json-fields', category: '结构化输出', title: '购物清单字段',
-    tier: 'regression', severity: 'major', responseFormat: 'json', requiredJsonKeys: ['items'],
-    input: '仅返回 JSON 购物清单，顶层包含 items 数组，每项包含 name 和 amount。',
+    tier: 'regression', severity: 'major', responseFormat: 'json', requiredJsonKeys: ['items'], requiredJsonPaths: ['items.0.name', 'items.0.amount'],
+    input: '计划需要鸡胸肉 300g 和西兰花 500g。仅返回 JSON 购物清单，顶层包含 items 数组，每项包含 name 和 amount。',
     requiredAny: ['items', 'name', 'amount'], forbidden: ['```', '清单如下'],
     rationale: '购物清单必须可解析并具备名称与数量信息。',
   },
