@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, CheckCircle2, CircleAlert, Download, FlaskConical, History, Loader2, ShieldCheck, ThumbsDown, ThumbsUp } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, CircleAlert, Download, FlaskConical, History, ImagePlus, Loader2, ShieldCheck, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { EVALUATION_CASES, SMOKE_CASE_IDS } from '@/lib/evaluation-cases';
 
 type RunResult = typeof EVALUATION_CASES[number] & {
@@ -202,6 +202,7 @@ export default function EvaluationPage() {
               {running ? <Loader2 className="size-4 animate-spin" /> : <FlaskConical className="size-4" />}{running ? '正在逐条评测…' : '运行全部用例'}
             </button>
             {summary && <button onClick={exportEvidence} className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-2xl border border-[var(--separator)] text-sm font-semibold text-[var(--system-green)]"><Download className="size-4" />导出评测证据</button>}
+            <Link href="/evaluation/image" className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-2xl border border-[var(--separator)] text-sm font-semibold text-[var(--system-green)]"><ImagePlus className="size-4" />图片解析评测</Link>
             {runs.some((run) => run.persistenceWarning) && <p className="mt-3 text-xs leading-5 text-[var(--system-red)]">{runs.find((run) => run.persistenceWarning)?.persistenceWarning}</p>}
             {summary && Object.keys(runs.find((run) => run.model === activeModel)?.failureSummary ?? {}).length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{Object.entries(runs.find((run) => run.model === activeModel)?.failureSummary ?? {}).map(([type, count]) => <span key={type} className="rounded-full bg-[var(--system-red)]/10 px-2 py-1 text-[11px] font-semibold text-[var(--system-red)]">{FAILURE_LABELS[type] ?? type} · {count}</span>)}</div>}
             {error && <p className="mt-3 text-xs leading-5 text-[var(--system-red)]">{error}</p>}

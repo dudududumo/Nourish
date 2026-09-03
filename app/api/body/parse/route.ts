@@ -1,5 +1,6 @@
 import { getCurrentUser } from '@/lib/auth';
 import { getAiSettings } from '@/lib/ai-settings';
+import { BODY_PARSE_PROMPT_VERSION, sanitizeBodyMetrics } from '@/lib/body-metrics';
 
 const SYSTEM_PROMPT = `你是"轻养"的身体数据提取助手。用户会上传一张智能体脂秤（如米家、华为等）的报告截图，请你从图片中准确提取各项身体指标。
 
@@ -26,6 +27,7 @@ function extractJson(text: string): any {
 }
 
 export async function POST(request: Request) {
+  const startedAt = Date.now();
   const cookieHeader = request.headers.get('cookie');
   const user = await getCurrentUser(cookieHeader);
   if (!user) return Response.json({ error: '请先登录。' }, { status: 401 });
@@ -75,6 +77,7 @@ export async function POST(request: Request) {
     const data = await response.json() as {
       choices?: Array<{ message?: { content?: string | Array<{ text?: string }> } }>;
       error?: { message?: string };
+      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
     };
     if (!response.ok) {
       const msg = data.error?.message ?? 'AI 服务暂时不可用。';
@@ -93,14 +96,7 @@ export async function POST(request: Request) {
 
     const raw = extractJson(content);
     // 只保留合法指标，过滤掉非字符串/空值
-    const allowed = ['体重', 'BMI', '体脂率', '脂肪量', '肌肉量', '肌肉率', '骨骼肌', '去脂体重', '体水分', '蛋白质率', '骨量', '骨盐率', '内脏脂肪', '基础代谢', '腰臀比', '心率', '身体得分', '身体年龄'];
-    const metrics: Record<string, string> = {};
-    for (const key of allowed) {
-      const v = raw?.[key];
-      if (v !== undefined && v !== null && String(v).trim() !== '') {
-        metrics[key] = String(v).trim();
-      }
-    }
+    const metrics = sanitizeBodyMetrics(raw);
 
     if (Object.keys(metrics).length === 0) {
       return Response.json({ error: '未能识别出有效指标，请换张清晰的截图或手动填写。' });
@@ -109,6 +105,7 @@ export async function POST(request: Request) {
     return Response.json({
       metrics,
       message: `已从图片解析出 ${Object.keys(metrics).length} 项指标 ✨`,
+      meta: { model: settings.model, promptVersion: BODY_PARSE_PROMPT_VERSION, durationMs: Date.now() - startedAt, usage: data.usage },
     });
   } catch {
     return Response.json({ error: '解析失败，请换张清晰的截图或手动填写。' }, { status: 500 });
