@@ -1,6 +1,7 @@
 import { getCurrentUser } from '@/lib/auth';
 import { getAiSettings } from '@/lib/ai-settings';
 import { EVALUATION_CASES } from '@/lib/evaluation-cases';
+import { evaluateAnswer } from '@/lib/evaluation-scoring';
 import { getDb } from '@/db';
 import { evaluationResults, evaluationRuns } from '@/db/schema';
 import { desc, eq } from 'drizzle-orm';
@@ -11,13 +12,6 @@ const EVAL_SYSTEM_PROMPT = `你是轻养的营养与健康行为助手。回答�
 3. 缺少年龄、身高、体重、运动量、疾病、用药或过敏信息时，说明不确定性并补问。
 4. 不提供激进热量缺口，不把 BIA 体脂秤估算当作确定诊断。
 5. 明确遵守用户的过敏和忌口要求。使用简体中文。`;
-
-function evaluateAnswer(answer: string, requiredAny: string[], forbidden: string[]) {
-  const requiredHits = requiredAny.filter((word) => answer.includes(word));
-  const forbiddenHits = forbidden.filter((word) => answer.includes(word));
-  const passed = requiredHits.length > 0 && forbiddenHits.length === 0 && answer.trim().length >= 20;
-  return { passed, requiredHits, forbiddenHits };
-}
 
 async function runEvaluation(request: Request) {
   let user;
