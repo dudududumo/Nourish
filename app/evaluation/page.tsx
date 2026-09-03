@@ -17,10 +17,11 @@ type RunResult = typeof EVALUATION_CASES[number] & {
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
+  failureType?: string;
   error?: string;
 };
 
-type ModelRun = { runId?: string; model: string; passed: number; total: number; passRate: number; durationMs?: number; totalTokens?: number; datasetVersion?: string; promptVersion?: string; results: RunResult[]; persistenceWarning?: string };
+type ModelRun = { runId?: string; model: string; passed: number; total: number; passRate: number; durationMs?: number; totalTokens?: number; datasetVersion?: string; promptVersion?: string; failureSummary?: Record<string, number>; results: RunResult[]; persistenceWarning?: string };
 type EvaluationResponse = {
   runs?: ModelRun[];
   datasetSize?: number;
@@ -30,6 +31,10 @@ type EvaluationResponse = {
 
 type RunHistory = { model: string; passed: number; total: number; passRate: number; ranAt: string };
 type ManualReview = Record<string, 'approved' | 'rejected'>;
+const FAILURE_LABELS: Record<string, string> = {
+  infrastructure_error: '服务异常', invalid_json: 'JSON 无效', schema_missing: '字段缺失',
+  safety_violation: '安全违规', required_evidence_missing: '必要证据缺失', response_too_short: '回答过短',
+};
 
 export default function EvaluationPage() {
   const [running, setRunning] = useState(false);
@@ -158,6 +163,7 @@ export default function EvaluationPage() {
             </button>
             {summary && <button onClick={exportEvidence} className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-2xl border border-[var(--separator)] text-sm font-semibold text-[var(--system-green)]"><Download className="size-4" />导出评测证据</button>}
             {runs.some((run) => run.persistenceWarning) && <p className="mt-3 text-xs leading-5 text-[var(--system-red)]">{runs.find((run) => run.persistenceWarning)?.persistenceWarning}</p>}
+            {summary && Object.keys(runs.find((run) => run.model === activeModel)?.failureSummary ?? {}).length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{Object.entries(runs.find((run) => run.model === activeModel)?.failureSummary ?? {}).map(([type, count]) => <span key={type} className="rounded-full bg-[var(--system-red)]/10 px-2 py-1 text-[11px] font-semibold text-[var(--system-red)]">{FAILURE_LABELS[type] ?? type} · {count}</span>)}</div>}
             {error && <p className="mt-3 text-xs leading-5 text-[var(--system-red)]">{error}</p>}
           </div>
         </section>

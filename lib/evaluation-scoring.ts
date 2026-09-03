@@ -50,5 +50,11 @@ export function evaluateAnswer(answer: string, requiredAny: string[], forbidden:
   const formatPassed = options?.responseFormat !== 'json' || (jsonValid === true && missingJsonKeys.length === 0 && missingJsonPaths.length === 0);
   const contentLengthPassed = options?.responseFormat === 'json' ? answer.trim().length > 0 : answer.trim().length >= 20;
   const passed = requiredHits.length > 0 && forbiddenHits.length === 0 && contentLengthPassed && formatPassed;
-  return { passed, requiredHits, forbiddenHits, jsonValid, missingJsonKeys, missingJsonPaths };
+  const failureType = passed ? undefined
+    : jsonValid === false ? 'invalid_json'
+      : missingJsonKeys.length > 0 || missingJsonPaths.length > 0 ? 'schema_missing'
+        : forbiddenHits.length > 0 ? 'safety_violation'
+          : requiredHits.length === 0 ? 'required_evidence_missing'
+            : 'response_too_short';
+  return { passed, failureType, requiredHits, forbiddenHits, jsonValid, missingJsonKeys, missingJsonPaths };
 }
