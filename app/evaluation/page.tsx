@@ -48,8 +48,15 @@ export default function EvaluationPage() {
     try {
       const models = modelInput.split(/[,，\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 3);
       const caseIds = runScope === 'smoke' ? SMOKE_CASE_IDS : EVALUATION_CASES.map((item) => item.id);
-      const response = await fetch('/api/evaluation/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ models, caseIds }) });
-      const data = await response.json() as EvaluationResponse;
+      const response = await fetch('/api/evaluation/run', { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ models, caseIds }) });
+      const responseText = await response.text();
+      if (!responseText.trim()) throw new Error(`评测服务返回空响应（HTTP ${response.status}），请稍后重试。`);
+      let data: EvaluationResponse;
+      try {
+        data = JSON.parse(responseText) as EvaluationResponse;
+      } catch {
+        throw new Error(`评测服务响应格式异常（HTTP ${response.status}），请稍后重试。`);
+      }
       if (!response.ok) throw new Error(data.error || '评测运行失败');
       if (!data.runs?.length) throw new Error('评测结果结构不完整');
       const first = data.runs[0];

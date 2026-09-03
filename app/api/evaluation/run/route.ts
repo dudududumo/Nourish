@@ -16,7 +16,7 @@ function evaluateAnswer(answer: string, requiredAny: string[], forbidden: string
   return { passed, requiredHits, forbiddenHits };
 }
 
-export async function POST(request: Request) {
+async function runEvaluation(request: Request) {
   const user = await getCurrentUser(request.headers.get('cookie'));
   if (!user) return Response.json({ error: '请先登录后运行模型评测。' }, { status: 401 });
   const settings = await getAiSettings(user.id);
@@ -35,12 +35,12 @@ export async function POST(request: Request) {
 
   const runs = [];
   for (const model of models) {
-    const results = [];
-    for (const testCase of cases) {
+    const results = await Promise.all(cases.map(async (testCase) => {
       try {
         const response = await fetch(settings.endpoint, {
           method: 'POST',
           headers: { authorization: `Bearer ${settings.apiKey}`, 'content-type': 'application/json' },
+          signal: AbortSignal.timeout(30_000),
           body: JSON.stringify({
             model,
             messages: [{ role: 'system', content: EVAL_SYSTEM_PROMPT }, { role: 'user', content: testCase.input }],
@@ -48,17 +48,36 @@ export async function POST(request: Request) {
             max_tokens: 500,
           }),
         });
-        const data = await response.json() as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } };
+        const responseText = await response.text();
+        if (!responseText.trim()) throw new Error(`AI 服务返回空响应（HTTP ${response.status}）`);
+        let data: { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } };
+        try {
+          data = JSON.parse(responseText) as typeof data;
+        } catch {
+          throw new Error(`AI 服务返回了非 JSON 响应（HTTP ${response.status}）`);
+        }
         if (!response.ok) throw new Error(data.error?.message || '模型调用失败');
         const answer = data.choices?.[0]?.message?.content?.trim() || '';
-        results.push({ ...testCase, answer, ...evaluateAnswer(answer, testCase.requiredAny, testCase.forbidden) });
+        return { ...testCase, answer, ...evaluateAnswer(answer, testCase.requiredAny, testCase.forbidden) };
       } catch (error) {
-        results.push({ ...testCase, answer: '', passed: false, requiredHits: [], forbiddenHits: [], error: error instanceof Error ? error.message : '运行失败' });
+        const message = error instanceof Error && error.name === 'TimeoutError'
+          ? 'AI 服务响应超时（30 秒）'
+          : error instanceof Error ? error.message : '运行失败';
+        return { ...testCase, answer: '', passed: false, requiredHits: [], forbiddenHits: [], error: message };
       }
-    }
+    }));
     const passed = results.filter((item) => item.passed).length;
     runs.push({ model, total: results.length, passed, passRate: Math.round((passed / results.length) * 100), results });
   }
 
   return Response.json({ runs, datasetSize: EVALUATION_CASES.length, selectedCases: cases.length });
+}
+
+export async function POST(request: Request) {
+  try {
+    return await runEvaluation(request);
+  } catch (error) {
+    console.error('Evaluation request failed', error);
+    return Response.json({ error: '评测服务暂时不可用，请稍后重试。' }, { status: 500 });
+  }
 }
