@@ -6,93 +6,16 @@ import Link from 'next/link';
 import {
   Home, CalendarRange, Refrigerator, Activity, ChevronRight,
   Sparkles, TrendingDown, Dumbbell, Archive,
-  Flame, Info, Settings, Send, Plus, X,
+  Flame, Info, Settings, Send, Plus,
   LogOut, User, Loader2, AlertCircle, Check,
   Bell, ChevronDown, ShoppingCart, Zap, Bot, Upload, ImageIcon, Minus,
   Timer, BookOpen, Pause, Play, ArrowRight, Trophy, Target, Moon,
 } from 'lucide-react';
 import { FASTING_STAGES, GOAL_LABELS, EXPERIENCE_LABELS, planLabel } from '@/lib/fasting';
 import { todayStr } from '@/lib/utils';
-
-type Tab = 'today' | 'plan' | 'coach' | 'fridge' | 'body' | 'fasting';
-
-type ChatMessage = {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  time: string;
-};
-type Zone = { id: string; name: string; type: '冷藏' | '冷冻'; capacity: number; used: number; icon: string };
-
-type DishIngredient = { name: string; amount: string; fromFridge?: boolean };
-type Dish = { id?: number; name: string; ingredients: DishIngredient[]; calories: number; protein: number; steps?: string[]; mealType?: string; sortOrder?: number };
-type MealGroup = { breakfast?: Dish[]; lunch?: Dish[]; dinner?: Dish[]; snack?: Dish[] };
-type ShoppingItem = { id?: number; name: string; amount: string; reason?: string; purchased?: boolean };
-type Insight = { id: number; type: 'observation' | 'suggestion' | 'warning'; category?: string; title: string; content: string; priority: number; readAt?: string | null };
-type WeeklyPlan = { id: number; weekStart: string; weekEnd: string; goal?: string; targetCalories?: number; targetProtein?: number; rationale?: string };
-
-type TodayData = {
-  plan: WeeklyPlan | null;
-  today: { date: string; calories: number; protein: number; meals: MealGroup };
-  insights: Insight[];
-  hasPlan: boolean;
-};
-
-type AdjustPreviewDish = { name: string; calories?: number; protein?: number };
-type AdjustPreview = {
-  reason?: string;
-  calories?: number;
-  protein?: number;
-  meals?: Record<string, AdjustPreviewDish[]>;
-};
-
-type FastingData = {
-  planHours: number;
-  goal: 'fat_loss' | 'health' | 'blood_sugar' | 'maintain';
-  experience: 'beginner' | 'intermediate' | 'advanced';
-  windowEndHour: number;
-  active: boolean;
-  startAt: string | null;
-  elapsedMinutes: number;
-  remainingMinutes: number;
-  progress: number;
-  canComplete: boolean;
-  todayCompleted: boolean;
-  todayFastHours: number;
-  todayFeel: { energy: number | null; hunger: number | null };
-  streak: number;
-  stage: { key: string; title: string; desc: string; accent: string; progress: number };
-  mealGuide: {
-    windowStart: string;
-    windowEnd: string;
-    eatHours: number;
-    mealCount: 1 | 2 | 3;
-    meals: { key: 'first' | 'second' | 'third'; name: string; time: string; suggestion: string }[];
-    note: string;
-  };
-  profile: {
-    hasProfile: boolean;
-    sex: 'male' | 'female' | null;
-    birthDate: string | null;
-    heightCm: number | null;
-    weightKg: number | null;
-    bodySource: 'measurement' | 'profile' | null;
-    latestBody: { weightKg: number | null; bodyFatPct: number | null; measuredAt: string } | null;
-    screening: Record<string, boolean>;
-  };
-  recommendation: {
-    ready: boolean;
-    contraindicated: boolean;
-    planHours: number;
-    level: 'beginner' | 'intermediate' | 'advanced';
-    reason: string;
-    warnings: string[];
-    bmi: number | null;
-    age: number | null;
-  };
-  advice: { kind: 'upgrade' | 'keep' | 'downgrade' | 'rest' | 'none'; title: string; content: string; nextHours?: number };
-  weekLogs: { date: string; fastHours: number; planHours: number | null; energy: number | null; hunger: number | null }[];
-};
+import { CoreJourney } from '@/app/home/core-journey';
+import { MetricCard, MiniStat, SectionTitle, Sheet } from '@/app/home/shared-components';
+import type { AdjustPreview, AuthUser, ChatMessage, Dish, FastingData, Insight, ShoppingItem, Tab, TodayData, WeeklyPlan, Zone } from '@/app/home/types';
 
 const metrics = [
   ['体重', '', 'kg'], ['BMI', '', ''],
@@ -292,8 +215,6 @@ const initialZones: Zone[] = [
 ];
 
 const initialFoods: { name: string; zone: string; amount: string; days: number; icon: string; shelf: number }[] = [];
-
-type AuthUser = { id: string; phone: string; nickname: string | null };
 
 function formatTime(iso: string) {
   const d = new Date(iso);
@@ -1049,6 +970,7 @@ export default function HomePage() {
             generating={generatingPlan}
             error={planError}
             fasting={fasting}
+            hasBody={Boolean(bodyLatest && Object.keys(bodyLatest).length)}
             onGoFasting={() => setTab('fasting')}
             onGenerate={generateWeeklyPlan}
             onPlan={() => setTab('plan')}
@@ -2132,7 +2054,7 @@ function FastingView({
 /* ==================== Today View ==================== */
 
 function TodayView({
-  user, todayData, loading, generating, error, fasting, onGoFasting, onGenerate, onPlan, onBody, onProfile, onShopping,
+  user, todayData, loading, generating, error, fasting, hasBody, onGoFasting, onGenerate, onPlan, onBody, onProfile, onShopping,
 }: {
   user: AuthUser;
   todayData: TodayData | null;
@@ -2140,6 +2062,7 @@ function TodayView({
   generating: boolean;
   error: string;
   fasting: FastingData | null;
+  hasBody: boolean;
   onGoFasting: () => void;
   onGenerate: () => void;
   onPlan: () => void;
@@ -2172,6 +2095,8 @@ function TodayView({
           </button>
         </div>
       </div>
+
+      <CoreJourney hasBody={hasBody} hasPlan={Boolean(hasPlan)} onBody={onBody} onPlan={hasPlan ? onPlan : onGenerate} />
 
       {/* 轻断食状态条 */}
       {fasting && (
@@ -3648,133 +3573,5 @@ function CoachChatView({
         )}
       </div>
     </div>
-  );
-}
-
-/* ==================== Shared Components ==================== */
-
-function MiniStat({ label, value, light = false }: { label: string; value: string; light?: boolean }) {
-  return (
-    <div className={`rounded-xl p-2.5 ${light ? 'bg-white/75 dark:bg-[var(--system-gray5)]/50' : 'bg-white/12'}`}>
-      <p className={`text-[10px] ${light ? 'text-[var(--secondary-label)]' : 'text-white/70'}`}>{label}</p>
-      <p className={`text-[13px] font-semibold mt-0.5 ${light ? '' : 'text-white'}`}>{value}</p>
-    </div>
-  );
-}
-
-function SectionTitle({ eyebrow, title, action, onAction }: { eyebrow: string; title: string; action?: string; onAction?: () => void }) {
-  return (
-    <div className="flex items-end justify-between mb-3 px-1">
-      <div>
-        <p className="text-[11px] font-semibold text-[var(--system-green)] uppercase tracking-wider">{eyebrow}</p>
-        <h2 className="text-[20px] font-bold mt-1">{title}</h2>
-      </div>
-      {action && (
-        <button onClick={onAction} className="text-[14px] text-[var(--system-blue)] font-medium">
-          {action}
-        </button>
-      )}
-    </div>
-  );
-}
-
-function MealRow({ label, name, detail, emoji, last }: { label: string; name: string; detail: string; emoji: string; last?: boolean }) {
-  return (
-    <div className={`flex items-center gap-3 px-4 py-3.5 ${!last ? 'border-b border-[var(--separator)]' : ''}`}>
-      <span className="text-2xl">{emoji}</span>
-      <div className="flex-1 min-w-0">
-        <p className="text-[15px] font-medium">{name}</p>
-        <p className="text-[12px] text-[var(--secondary-label)]">{detail}</p>
-      </div>
-      <span className="text-[12px] font-semibold text-[var(--system-green)] bg-[var(--system-green)]/10 px-2.5 py-1 rounded-full">
-        {label}
-      </span>
-    </div>
-  );
-}
-
-function ReasonItem({
-  icon, iconBg, iconColor, title, text, last = false,
-}: {
-  icon: React.ReactNode;
-  iconBg: string;
-  iconColor: string;
-  title: string;
-  text: string;
-  last?: boolean;
-}) {
-  return (
-    <div className={`flex gap-3 px-4 py-3.5 ${!last ? 'border-b border-[var(--separator)]' : ''}`}>
-      <span className={`grid size-9 shrink-0 place-items-center rounded-xl ${iconBg} ${iconColor}`}>
-        {icon}
-      </span>
-      <div className="flex-1">
-        <p className="text-[14px] font-medium">{title}</p>
-        <p className="mt-1 text-[12px] text-[var(--secondary-label)] leading-[18px]">{text}</p>
-      </div>
-    </div>
-  );
-}
-
-function MetricCard({ name, value, unit, note, noteColor, level, levelColor }: { name: string; value: string; unit: string; note: string; noteColor?: string | null; level?: string | null; levelColor?: string | null }) {
-  return (
-    <div className="bg-[var(--secondary-grouped-background)] rounded-2xl p-4 relative">
-      <div className="flex items-start justify-between gap-1">
-        <p className="text-[12px] text-[var(--secondary-label)]">{name}</p>
-        {level && levelColor && (
-          <span
-            className="mt-0.5 shrink-0 px-1.5 py-0.5 rounded-md text-[10px] font-semibold leading-[14px]"
-            style={{ color: levelColor, backgroundColor: `${levelColor}1f` }}
-          >
-            {level}
-          </span>
-        )}
-      </div>
-      <p className="text-[20px] font-bold tracking-tight mt-2">
-        {value || '—'}<span className="text-[10px] font-normal text-[var(--secondary-label)] ml-1">{unit}</span>
-      </p>
-      {note ? (
-        <p className="text-[10px] mt-1" style={{ color: noteColor ?? 'var(--secondary-label)' }}>{note}</p>
-      ) : null}
-    </div>
-  );
-}
-
-/* ==================== Sheet Component ==================== */
-
-function Sheet({
-  open, onClose, title, children,
-}: {
-  open: boolean;
-  onClose: () => void;
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <>
-      <div
-        className={`ios-sheet-overlay ${open ? 'open' : ''}`}
-        onClick={onClose}
-        style={{ pointerEvents: open ? 'auto' : 'none' }}
-      />
-      <div
-        className={`ios-sheet ${open ? 'open' : ''}`}
-        style={{ pointerEvents: open ? 'auto' : 'none' }}
-      >
-        <div className="ios-sheet-grabber" />
-        <div className="relative flex items-center justify-center px-4 py-3 border-b border-[var(--separator)]">
-          <h3 className="text-[16px] font-semibold">{title}</h3>
-          <button
-            onClick={onClose}
-            className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-[var(--system-gray5)] flex items-center justify-center press-effect"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-        <div className="overflow-y-auto max-h-[calc(90vh-60px)] ios-scroll pt-4">
-          {children}
-        </div>
-      </div>
-    </>
   );
 }

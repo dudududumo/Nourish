@@ -1,0 +1,23 @@
+export type Tab = 'today' | 'plan' | 'coach' | 'fridge' | 'body' | 'fasting';
+export type ChatMessage = { id: string; role: 'user' | 'assistant'; content: string; time: string };
+export type Zone = { id: string; name: string; type: '冷藏' | '冷冻'; capacity: number; used: number; icon: string };
+export type DishIngredient = { name: string; amount: string; fromFridge?: boolean };
+export type Dish = { id?: number; name: string; dishName?: string; ingredients: DishIngredient[]; calories: number; protein: number; steps?: string[]; mealType?: string; sortOrder?: number };
+export type MealGroup = { breakfast?: Dish[]; lunch?: Dish[]; dinner?: Dish[]; snack?: Dish[] };
+export type ShoppingItem = { id?: number; name: string; amount: string; reason?: string; purchased?: boolean };
+export type Insight = { id: number; type: 'observation' | 'suggestion' | 'warning'; category?: string; title: string; content: string; priority: number; readAt?: string | null };
+export type WeeklyPlan = { id: number; weekStart: string; weekEnd: string; goal?: string; targetCalories?: number; targetProtein?: number; rationale?: string };
+export type TodayData = { plan: WeeklyPlan | null; today: { date: string; calories: number; protein: number; meals: MealGroup }; insights: Insight[]; hasPlan: boolean };
+export type AdjustPreviewDish = { name: string; calories?: number; protein?: number };
+export type AdjustPreview = { reason?: string; calories?: number; protein?: number; meals?: Record<string, AdjustPreviewDish[]> };
+export type AuthUser = { id: string; phone: string; nickname: string | null };
+export type FastingData = {
+  planHours: number; goal: 'fat_loss' | 'health' | 'blood_sugar' | 'maintain'; experience: 'beginner' | 'intermediate' | 'advanced'; windowEndHour: number;
+  active: boolean; startAt: string | null; elapsedMinutes: number; remainingMinutes: number; progress: number; canComplete: boolean; todayCompleted: boolean; todayFastHours: number;
+  todayFeel: { energy: number | null; hunger: number | null }; streak: number; stage: { key: string; title: string; desc: string; accent: string; progress: number };
+  mealGuide: { windowStart: string; windowEnd: string; eatHours: number; mealCount: 1 | 2 | 3; meals: { key: 'first' | 'second' | 'third'; name: string; time: string; suggestion: string }[]; note: string };
+  profile: { hasProfile: boolean; sex: 'male' | 'female' | null; birthDate: string | null; heightCm: number | null; weightKg: number | null; bodySource: 'measurement' | 'profile' | null; latestBody: { weightKg: number | null; bodyFatPct: number | null; measuredAt: string } | null; screening: Record<string, boolean> };
+  recommendation: { ready: boolean; contraindicated: boolean; planHours: number; level: 'beginner' | 'intermediate' | 'advanced'; reason: string; warnings: string[]; bmi: number | null; age: number | null };
+  advice: { kind: 'upgrade' | 'keep' | 'downgrade' | 'rest' | 'none'; title: string; content: string; nextHours?: number };
+  weekLogs: { date: string; fastHours: number; planHours: number | null; energy: number | null; hunger: number | null }[];
+};
