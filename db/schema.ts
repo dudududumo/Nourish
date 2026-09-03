@@ -151,6 +151,17 @@ export const shoppingItems = sqliteTable('shopping_items', {
   index('idx_shopping_items_plan').on(table.planId),
 ]);
 
+export const planFeedback = sqliteTable('plan_feedback', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: text('user_id').notNull(),
+  planId: integer('plan_id').notNull(),
+  date: text('date').notNull(),
+  execution: text('execution').notNull(),
+  createdAt: text('created_at').notNull(),
+}, (table) => [
+  uniqueIndex('idx_plan_feedback_user_plan_date').on(table.userId, table.planId, table.date),
+]);
+
 export const aiInsights = sqliteTable('ai_insights', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   userId: text('user_id').notNull(),

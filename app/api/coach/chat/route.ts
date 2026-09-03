@@ -1,5 +1,6 @@
 import { getCurrentUser } from '@/lib/auth';
 import { getAiSettings } from '@/lib/ai-settings';
+import { formatKnowledgeContext, retrieveNutritionKnowledge } from '@/lib/nutrition-knowledge';
 
 const SYSTEM_PROMPT = `你是"轻养"的 AI 营养师，名字叫"小养"。
 
@@ -39,6 +40,7 @@ export async function POST(request: Request) {
   if (!body.message?.trim()) {
     return Response.json({ error: '请输入消息内容。' }, { status: 400 });
   }
+  const retrieved = retrieveNutritionKnowledge(body.message);
 
   // Build context info for the AI
   const contextParts: string[] = [];
@@ -56,8 +58,8 @@ export async function POST(request: Request) {
   }
 
   const userPrompt = contextParts.length > 0
-    ? `${contextParts.join('\n\n')}\n\n用户说：${body.message}`
-    : `用户说：${body.message}`;
+    ? `${contextParts.join('\n\n')}\n\n检索到的权威知识：\n${formatKnowledgeContext(retrieved)}\n\n用户说：${body.message}`
+    : `检索到的权威知识：\n${formatKnowledgeContext(retrieved)}\n\n用户说：${body.message}`;
 
   try {
     const response = await fetch(settings.endpoint, {
@@ -78,7 +80,7 @@ export async function POST(request: Request) {
     if (!response.ok) return Response.json({ error: data.error?.message ?? 'AI 服务暂时不可用。' }, { status: response.status });
 
     const reply = data.choices?.[0]?.message?.content ?? '';
-    return Response.json({ reply });
+    return Response.json({ reply, retrieval: { strategy: 'keyword+character-bigram', entries: retrieved.map(({ id, title, source, sourceUrl, score }) => ({ id, title, source, sourceUrl, score })) } });
   } catch (e) {
     return Response.json({ error: e instanceof Error ? e.message : '连接 AI 服务失败，请检查网络和配置。' }, { status: 502 });
   }

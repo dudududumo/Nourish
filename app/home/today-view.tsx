@@ -31,6 +31,17 @@ export function TodayView({
   const hasPlan = todayData?.hasPlan;
   const [openSteps, setOpenSteps] = useState<string>('');
   const [openIngredients, setOpenIngredients] = useState<string>('');
+  const [executionFeedback, setExecutionFeedback] = useState<'difficult' | 'okay' | 'smooth' | null>(null);
+  const [feedbackSaving, setFeedbackSaving] = useState(false);
+
+  async function saveExecutionFeedback(value: 'difficult' | 'okay' | 'smooth') {
+    if (!todayData?.plan?.id || feedbackSaving) return;
+    setFeedbackSaving(true);
+    try {
+      const response = await fetch('/api/feedback', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ planId: todayData.plan.id, execution: value }) });
+      if (response.ok) setExecutionFeedback(value);
+    } finally { setFeedbackSaving(false); }
+  }
 
   return (
     <div className="max-w-2xl mx-auto px-4 pb-6">
@@ -49,7 +60,7 @@ export function TodayView({
         </div>
       </div>
 
-      <CoreJourney hasBody={hasBody} hasPlan={Boolean(hasPlan)} onBody={onBody} onPlan={hasPlan ? onPlan : onGenerate} />
+      <CoreJourney hasBody={hasBody} hasPlan={Boolean(hasPlan)} hasFeedback={Boolean(executionFeedback)} onBody={onBody} onPlan={hasPlan ? onPlan : onGenerate} />
 
       {/* 轻断食状态条 */}
       {fasting && (
@@ -134,6 +145,8 @@ export function TodayView({
               </div>
             </div>
           </div>
+
+          <section className="mb-5 rounded-2xl border border-[#DCFCE7] bg-white p-4"><p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--system-green)]">执行反馈</p><h2 className="mt-1 text-[16px] font-semibold">今天的计划执行起来怎么样？</h2><p className="mt-1 text-[12px] text-[var(--secondary-label)]">反馈会作为下一周期调整的结构化输入。</p><div className="mt-3 grid grid-cols-3 gap-2">{([['difficult', '有点困难'], ['okay', '基本可行'], ['smooth', '很顺利']] as const).map(([value, label]) => <button key={value} disabled={feedbackSaving} onClick={() => void saveExecutionFeedback(value)} className={`rounded-xl px-2 py-2.5 text-[12px] font-semibold ${executionFeedback === value ? 'bg-[var(--system-green)] text-white' : 'bg-[#F0FDF4] text-[var(--system-green)]'}`}>{label}</button>)}</div></section>
 
           {/* Today's Meals */}
           <SectionTitle eyebrow="今日餐桌" title="三餐安排" action="查看全部" onAction={onPlan} />
@@ -284,5 +297,3 @@ export function TodayView({
     </div>
   );
 }
-
-

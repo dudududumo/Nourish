@@ -1,5 +1,6 @@
 import { getCurrentUser } from '@/lib/auth';
 import { getAiSettings } from '@/lib/ai-settings';
+import { formatKnowledgeContext, retrieveNutritionKnowledge } from '@/lib/nutrition-knowledge';
 
 const COACH_INSTRUCTIONS = `你是"轻养"的专业营养与健康行为教练。你面向一位希望健康减脂、改善身体组成、偏好好吃易做食物和低冲击训练的用户。
 
@@ -22,6 +23,7 @@ export async function POST(request: Request) {
 
   const body = await request.json() as { question?: string; context?: unknown };
   if (!body.question?.trim()) return Response.json({ error: '请输入问题。' }, { status: 400 });
+  const retrieved = retrieveNutritionKnowledge(body.question);
 
   try {
     const response = await fetch(settings.endpoint, {
@@ -31,7 +33,7 @@ export async function POST(request: Request) {
         model: settings.model,
         messages: [
           { role: 'system', content: COACH_INSTRUCTIONS },
-          { role: 'user', content: `用户问题：${body.question}\n\n当前个人数据：${JSON.stringify(body.context ?? {})}` },
+          { role: 'user', content: `用户问题：${body.question}\n\n当前个人数据：${JSON.stringify(body.context ?? {})}\n\n检索到的权威知识：\n${formatKnowledgeContext(retrieved)}\n\n仅在相关时使用上述知识；引用时使用对应来源名，不要编造未提供的来源。` },
         ],
         temperature: 0.3,
         max_tokens: 1600,
@@ -40,7 +42,7 @@ export async function POST(request: Request) {
     const data = await response.json() as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } };
     if (!response.ok) return Response.json({ error: data.error?.message ?? 'AI 服务暂时不可用。' }, { status: response.status });
     const answer = data.choices?.[0]?.message?.content ?? '';
-    return Response.json({ answer });
+    return Response.json({ answer, retrieval: { strategy: 'keyword+character-bigram', entries: retrieved.map(({ id, title, source, sourceUrl, score }) => ({ id, title, source, sourceUrl, score })) } });
   } catch (e) {
     return Response.json({ error: '连接 AI 服务失败，请检查网络和配置。' }, { status: 502 });
   }

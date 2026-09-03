@@ -181,7 +181,7 @@ export default function EvaluationPage() {
   return (
     <main className="min-h-screen bg-[var(--grouped-background)] text-[var(--label)]">
       <div className="mx-auto max-w-5xl px-5 py-8 md:px-8 md:py-12">
-        <a href="/" className="inline-flex items-center gap-2 text-sm text-[var(--secondary-label)] hover:text-[var(--label)]"><ArrowLeft className="size-4" />返回轻养</a>
+        <div className="flex flex-wrap items-center justify-between gap-3"><a href="/" className="inline-flex items-center gap-2 text-sm text-[var(--secondary-label)] hover:text-[var(--label)]"><ArrowLeft className="size-4" />返回轻养</a><div className="flex gap-3 text-xs font-semibold text-[var(--system-green)]"><a href="/case-study/product">产品案例</a><a href="/case-study/evaluation">评测案例</a></div></div>
 
         <section className="mt-7 grid gap-5 md:grid-cols-[1.4fr_.6fr]">
           <div>
