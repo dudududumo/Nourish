@@ -13,7 +13,7 @@ type RunResult = typeof EVALUATION_CASES[number] & {
   error?: string;
 };
 
-type ModelRun = { runId?: string; model: string; passed: number; total: number; passRate: number; results: RunResult[] };
+type ModelRun = { runId?: string; model: string; passed: number; total: number; passRate: number; results: RunResult[]; persistenceWarning?: string };
 type EvaluationResponse = {
   runs?: ModelRun[];
   datasetSize?: number;
@@ -32,6 +32,7 @@ export default function EvaluationPage() {
   const [activeModel, setActiveModel] = useState('');
   const [modelInput, setModelInput] = useState('');
   const [runScope, setRunScope] = useState<'smoke' | 'regression'>('smoke');
+  const [completedScope, setCompletedScope] = useState<'smoke' | 'regression' | null>(null);
   const [error, setError] = useState('');
   const [ranAt, setRanAt] = useState('');
   const [history, setHistory] = useState<RunHistory[]>([]);
@@ -72,6 +73,7 @@ export default function EvaluationPage() {
       if (!data.runs?.length) throw new Error('评测结果结构不完整');
       const first = data.runs[0];
       setRuns(data.runs);
+      setCompletedScope(runScope);
       setActiveModel(first.model);
       setResults(first.results);
       setSummary({ model: first.model, passed: first.passed, total: first.total, passRate: first.passRate });
@@ -96,7 +98,7 @@ export default function EvaluationPage() {
 
   function exportEvidence() {
     if (!summary) return;
-    const payload = { project: 'Nourish Eval Lab', ranAt, runScope, scoring: 'deterministic-rules-with-human-review', manualReview, runs };
+    const payload = { project: 'Nourish Eval Lab', ranAt, runScope: completedScope, scoring: 'deterministic-rules-with-human-review', manualReview, runs };
     const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
     const anchor = document.createElement('a');
     anchor.href = url;
@@ -130,6 +132,7 @@ export default function EvaluationPage() {
               {running ? <Loader2 className="size-4 animate-spin" /> : <FlaskConical className="size-4" />}{running ? '正在逐条评测…' : '运行全部用例'}
             </button>
             {summary && <button onClick={exportEvidence} className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-2xl border border-[var(--separator)] text-sm font-semibold text-[var(--system-green)]"><Download className="size-4" />导出评测证据</button>}
+            {runs.some((run) => run.persistenceWarning) && <p className="mt-3 text-xs leading-5 text-[var(--system-red)]">{runs.find((run) => run.persistenceWarning)?.persistenceWarning}</p>}
             {error && <p className="mt-3 text-xs leading-5 text-[var(--system-red)]">{error}</p>}
           </div>
         </section>

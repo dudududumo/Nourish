@@ -87,8 +87,7 @@ async function runEvaluation(request: Request) {
     const createdAt = new Date().toISOString();
     const passRate = Math.round((passed / results.length) * 100);
     const db = getDb();
-    await db.insert(evaluationRuns).values({ id: runId, userId: user.id, model, scope, total: results.length, passed, passRate, createdAt });
-    await db.insert(evaluationResults).values(results.map((result) => ({
+    const resultRows = results.map((result) => ({
       runId,
       caseId: result.id,
       category: result.category,
@@ -99,8 +98,20 @@ async function runEvaluation(request: Request) {
       forbiddenHitsJson: JSON.stringify(result.forbiddenHits),
       error: 'error' in result ? result.error ?? null : null,
       createdAt,
-    })));
-    runs.push({ runId, model, total: results.length, passed, passRate, results });
+    }));
+    let persistenceWarning: string | undefined;
+    try {
+      await db.insert(evaluationRuns).values({ id: runId, userId: user.id, model, scope, total: results.length, passed, passRate, createdAt });
+      // D1 limits bound parameters per statement. Eight rows keep this insert
+      // safely below the limit as the result schema grows.
+      for (let index = 0; index < resultRows.length; index += 8) {
+        await db.insert(evaluationResults).values(resultRows.slice(index, index + 8));
+      }
+    } catch (error) {
+      console.error('Evaluation persistence failed', error);
+      persistenceWarning = '模型评测已完成，但本轮证据未能完整保存。';
+    }
+    runs.push({ runId, model, total: results.length, passed, passRate, results, persistenceWarning });
   }
 
   return Response.json({ runs, datasetSize: EVALUATION_CASES.length, selectedCases: cases.length });
