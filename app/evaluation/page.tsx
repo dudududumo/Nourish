@@ -29,7 +29,7 @@ type EvaluationResponse = {
   error?: string;
 };
 
-type RunHistory = { model: string; passed: number; total: number; passRate: number; ranAt: string };
+type RunHistory = { model: string; passed: number; total: number; passRate: number; ranAt: string; durationMs?: number | null; totalTokens?: number | null; promptVersion?: string | null };
 type ManualReview = Record<string, 'approved' | 'rejected'>;
 const FAILURE_LABELS: Record<string, string> = {
   infrastructure_error: '服务异常', invalid_json: 'JSON 无效', schema_missing: '字段缺失',
@@ -57,11 +57,11 @@ export default function EvaluationPage() {
       .then(async (response) => {
         const text = await response.text();
         if (!response.ok || !text.trim()) return null;
-        return JSON.parse(text) as { runs?: Array<{ model: string; passed: number; total: number; passRate: number; createdAt: string }> };
+        return JSON.parse(text) as { runs?: Array<{ model: string; passed: number; total: number; passRate: number; createdAt: string; durationMs?: number | null; totalTokens?: number | null; promptVersion?: string | null }> };
       })
       .then((data) => {
         if (!data?.runs?.length) return;
-        setHistory(data.runs.slice(0, 5).map((run) => ({ model: run.model, passed: run.passed, total: run.total, passRate: run.passRate, ranAt: run.createdAt })));
+        setHistory(data.runs.slice(0, 5).map((run) => ({ model: run.model, passed: run.passed, total: run.total, passRate: run.passRate, ranAt: run.createdAt, durationMs: run.durationMs, totalTokens: run.totalTokens, promptVersion: run.promptVersion })));
       })
       .catch(() => undefined);
   }, []);
@@ -92,7 +92,7 @@ export default function EvaluationPage() {
       setManualReview({});
       const completedAt = new Date().toISOString();
       setRanAt(completedAt);
-      const nextHistory = [...data.runs.map(({ model, passed, total, passRate }) => ({ model, passed, total, passRate, ranAt: completedAt })), ...history].slice(0, 5);
+      const nextHistory = [...data.runs.map(({ model, passed, total, passRate, durationMs, totalTokens, promptVersion }) => ({ model, passed, total, passRate, durationMs, totalTokens, promptVersion, ranAt: completedAt })), ...history].slice(0, 5);
       setHistory(nextHistory);
       localStorage.setItem('nourish-eval-history', JSON.stringify(nextHistory));
     } catch (reason) {
@@ -175,7 +175,7 @@ export default function EvaluationPage() {
 
         {history.length > 0 && <section className="mt-8 rounded-3xl border border-[var(--separator)] bg-white p-5 md:p-6">
           <div className="flex items-center gap-2"><History className="size-5 text-[var(--system-green)]" /><h2 className="font-semibold">最近模型运行</h2></div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">{history.map((run) => <div key={`${run.ranAt}-${run.model}`} className="rounded-2xl bg-[var(--system-gray6)] p-3"><p className="truncate text-xs text-[var(--secondary-label)]">{run.model}</p><p className="mt-1 text-xl font-semibold text-[var(--system-green)]">{run.passRate}%</p><p className="mt-1 text-[11px] text-[var(--tertiary-label)]">{new Date(run.ranAt).toLocaleString('zh-CN')}</p></div>)}</div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">{history.map((run, index) => { const previous = history.slice(index + 1).find((item) => item.model === run.model && item.total === run.total); const delta = previous ? run.passRate - previous.passRate : null; return <div key={`${run.ranAt}-${run.model}`} className="rounded-2xl bg-[var(--system-gray6)] p-3"><p className="truncate text-xs text-[var(--secondary-label)]">{run.model}</p><div className="mt-1 flex items-baseline gap-1.5"><p className="text-xl font-semibold text-[var(--system-green)]">{run.passRate}%</p>{delta !== null && <span className={`text-[11px] font-semibold ${delta >= 0 ? 'text-[var(--system-green)]' : 'text-[var(--system-red)]'}`}>{delta >= 0 ? '+' : ''}{delta}pp</span>}</div><p className="mt-1 text-[11px] text-[var(--tertiary-label)]">{run.durationMs ? `${(run.durationMs / 1000).toFixed(1)}s · ` : ''}{run.totalTokens ? `${run.totalTokens.toLocaleString()} tokens` : run.promptVersion ?? '历史基线'}</p><p className="mt-1 text-[11px] text-[var(--tertiary-label)]">{new Date(run.ranAt).toLocaleString('zh-CN')}</p></div>; })}</div>
         </section>}
 
         <section className="mt-10">

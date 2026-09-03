@@ -78,6 +78,7 @@ export const evaluationResults = sqliteTable('evaluation_results', {
   answer: text('answer').notNull().default(''),
   requiredHitsJson: text('required_hits_json').notNull().default('[]'),
   forbiddenHitsJson: text('forbidden_hits_json').notNull().default('[]'),
+  failureType: text('failure_type'),
   error: text('error'),
   manualReview: text('manual_review'),
   reviewedAt: text('reviewed_at'),
