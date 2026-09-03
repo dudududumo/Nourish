@@ -65,6 +65,8 @@ export const evaluationRuns = sqliteTable('evaluation_runs', {
   promptVersion: text('prompt_version'),
   durationMs: integer('duration_ms'),
   totalTokens: integer('total_tokens'),
+  estimatedCostMicros: integer('estimated_cost_micros'),
+  costCurrency: text('cost_currency'),
   createdAt: text('created_at').notNull(),
 }, (table) => [index('idx_evaluation_runs_user_date').on(table.userId, table.createdAt)]);
 

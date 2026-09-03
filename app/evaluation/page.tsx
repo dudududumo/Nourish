@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { ArrowLeft, CheckCircle2, CircleAlert, Download, FlaskConical, History, ImagePlus, Loader2, ShieldCheck, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { EVALUATION_CASES, SMOKE_CASE_IDS } from '@/lib/evaluation-cases';
 
@@ -22,7 +21,7 @@ type RunResult = typeof EVALUATION_CASES[number] & {
   error?: string;
 };
 
-type ModelRun = { runId?: string; model: string; passed: number; total: number; passRate: number; durationMs?: number; totalTokens?: number; datasetVersion?: string; promptVersion?: string; failureSummary?: Record<string, number>; results: RunResult[]; persistenceWarning?: string };
+type ModelRun = { runId?: string; model: string; passed: number; total: number; passRate: number; durationMs?: number; totalTokens?: number; estimatedCost?: number; costCurrency?: string; datasetVersion?: string; promptVersion?: string; failureSummary?: Record<string, number>; results: RunResult[]; persistenceWarning?: string };
 type EvaluationResponse = {
   runs?: ModelRun[];
   datasetSize?: number;
@@ -44,6 +43,8 @@ export default function EvaluationPage() {
   const [runs, setRuns] = useState<ModelRun[]>([]);
   const [activeModel, setActiveModel] = useState('');
   const [modelInput, setModelInput] = useState('');
+  const [inputPrice, setInputPrice] = useState('');
+  const [outputPrice, setOutputPrice] = useState('');
   const [runScope, setRunScope] = useState<'smoke' | 'regression'>('smoke');
   const [completedScope, setCompletedScope] = useState<'smoke' | 'regression' | null>(null);
   const [error, setError] = useState('');
@@ -91,7 +92,8 @@ export default function EvaluationPage() {
     try {
       const models = modelInput.split(/[,，\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 3);
       const caseIds = runScope === 'smoke' ? SMOKE_CASE_IDS : EVALUATION_CASES.map((item) => item.id);
-      const response = await fetch('/api/evaluation/run', { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ models, caseIds }) });
+      const pricing = inputPrice.trim() && outputPrice.trim() ? { inputPerMillion: Number(inputPrice), outputPerMillion: Number(outputPrice), currency: 'CNY' } : undefined;
+      const response = await fetch('/api/evaluation/run', { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ models, caseIds, pricing }) });
       const responseText = await response.text();
       if (!responseText.trim()) throw new Error(`评测服务返回空响应（HTTP ${response.status}），请稍后重试。`);
       let data: EvaluationResponse;
@@ -179,7 +181,7 @@ export default function EvaluationPage() {
   return (
     <main className="min-h-screen bg-[var(--grouped-background)] text-[var(--label)]">
       <div className="mx-auto max-w-5xl px-5 py-8 md:px-8 md:py-12">
-        <Link href="/" className="inline-flex items-center gap-2 text-sm text-[var(--secondary-label)] hover:text-[var(--label)]"><ArrowLeft className="size-4" />返回轻养</Link>
+        <a href="/" className="inline-flex items-center gap-2 text-sm text-[var(--secondary-label)] hover:text-[var(--label)]"><ArrowLeft className="size-4" />返回轻养</a>
 
         <section className="mt-7 grid gap-5 md:grid-cols-[1.4fr_.6fr]">
           <div>
@@ -191,18 +193,19 @@ export default function EvaluationPage() {
             <p className="text-xs text-[var(--secondary-label)]">本轮结果</p>
             <div className="mt-2 flex items-end gap-2"><strong className="text-4xl">{summary ? `${summary.passRate}%` : '—'}</strong><span className="pb-1 text-sm text-[var(--secondary-label)]">通过率</span></div>
             <p className="mt-2 text-xs text-[var(--secondary-label)]">{summary ? `${summary.model} · ${summary.passed}/${summary.total} 通过` : '运行后显示真实结果，不预填演示数据'}</p>
-            {summary && (() => { const active = runs.find((run) => run.model === activeModel); return <p className="mt-1 text-[11px] text-[var(--tertiary-label)]">{active?.durationMs != null ? `${(active.durationMs / 1000).toFixed(1)} 秒` : '耗时未知'} · {active?.totalTokens ? `${active.totalTokens.toLocaleString()} tokens` : '服务商未返回 token'} · {active?.datasetVersion ?? '未记录数据集版本'}</p>; })()}
+            {summary && (() => { const active = runs.find((run) => run.model === activeModel); return <p className="mt-1 text-[11px] text-[var(--tertiary-label)]">{active?.durationMs != null ? `${(active.durationMs / 1000).toFixed(1)} 秒` : '耗时未知'} · {active?.totalTokens ? `${active.totalTokens.toLocaleString()} tokens` : '服务商未返回 token'} · {active?.estimatedCost != null ? `${active.estimatedCost.toFixed(4)} ${active.costCurrency ?? ''}` : '成本未配置'} · {active?.datasetVersion ?? '未记录数据集版本'}</p>; })()}
             <div className="mt-4 grid grid-cols-2 gap-2 rounded-2xl bg-[#F0FDF4] p-1 text-xs font-semibold">
               <button onClick={() => setRunScope('smoke')} className={`rounded-xl px-2 py-2 ${runScope === 'smoke' ? 'bg-white text-[var(--system-green)] border border-[#DCFCE7]' : 'text-[var(--secondary-label)]'}`}>冒烟集 · {SMOKE_CASE_IDS.length}</button>
               <button onClick={() => setRunScope('regression')} className={`rounded-xl px-2 py-2 ${runScope === 'regression' ? 'bg-white text-[var(--system-green)] border border-[#DCFCE7]' : 'text-[var(--secondary-label)]'}`}>回归集 · {EVALUATION_CASES.length}</button>
             </div>
             <input value={modelInput} onChange={(event) => setModelInput(event.target.value)} placeholder="模型名，可用逗号分隔（最多 3 个）" className="mt-2 h-10 w-full rounded-xl border border-[var(--separator)] bg-white px-3 text-xs outline-none focus:border-[var(--system-green)]" />
+            <div className="mt-2 grid grid-cols-2 gap-2"><input value={inputPrice} onChange={(event) => setInputPrice(event.target.value)} placeholder="输入 ¥/百万 Token" className="h-10 rounded-xl border border-[var(--separator)] bg-white px-3 text-xs" /><input value={outputPrice} onChange={(event) => setOutputPrice(event.target.value)} placeholder="输出 ¥/百万 Token" className="h-10 rounded-xl border border-[var(--separator)] bg-white px-3 text-xs" /></div>
             <p className="mt-1 text-[11px] text-[var(--tertiary-label)]">留空使用当前配置模型；多个模型共用已配置 Endpoint 与密钥。</p>
             <button onClick={() => void runEvaluation()} disabled={running} className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-[var(--system-green)] font-semibold text-white disabled:opacity-50">
               {running ? <Loader2 className="size-4 animate-spin" /> : <FlaskConical className="size-4" />}{running ? '正在逐条评测…' : '运行全部用例'}
             </button>
             {summary && <button onClick={exportEvidence} className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-2xl border border-[var(--separator)] text-sm font-semibold text-[var(--system-green)]"><Download className="size-4" />导出评测证据</button>}
-            <Link href="/evaluation/image" className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-2xl border border-[var(--separator)] text-sm font-semibold text-[var(--system-green)]"><ImagePlus className="size-4" />图片解析评测</Link>
+            <a href="/evaluation/image" className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-2xl border border-[var(--separator)] text-sm font-semibold text-[var(--system-green)]"><ImagePlus className="size-4" />图片解析评测</a>
             {runs.some((run) => run.persistenceWarning) && <p className="mt-3 text-xs leading-5 text-[var(--system-red)]">{runs.find((run) => run.persistenceWarning)?.persistenceWarning}</p>}
             {summary && Object.keys(runs.find((run) => run.model === activeModel)?.failureSummary ?? {}).length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{Object.entries(runs.find((run) => run.model === activeModel)?.failureSummary ?? {}).map(([type, count]) => <span key={type} className="rounded-full bg-[var(--system-red)]/10 px-2 py-1 text-[11px] font-semibold text-[var(--system-red)]">{FAILURE_LABELS[type] ?? type} · {count}</span>)}</div>}
             {error && <p className="mt-3 text-xs leading-5 text-[var(--system-red)]">{error}</p>}

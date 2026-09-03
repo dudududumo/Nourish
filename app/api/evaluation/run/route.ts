@@ -37,7 +37,7 @@ async function runEvaluation(request: Request) {
   }
   if (!settings) return Response.json({ error: '请先在个人中心配置 AI 服务。' }, { status: 503 });
 
-  const body = await request.json().catch(() => ({})) as { caseIds?: string[]; models?: string[] };
+  const body = await request.json().catch(() => ({})) as { caseIds?: string[]; models?: string[]; pricing?: { inputPerMillion?: number; outputPerMillion?: number; currency?: string } };
   const requestedIds = Array.isArray(body.caseIds) ? body.caseIds.slice(0, 50) : [];
   const cases = EVALUATION_CASES.filter((item) => requestedIds.length === 0 || requestedIds.includes(item.id));
   if (cases.length === 0) return Response.json({ error: '没有可运行的评测用例。' }, { status: 400 });
@@ -103,6 +103,12 @@ async function runEvaluation(request: Request) {
     const passRate = Math.round((passed / results.length) * 100);
     const durationMs = Date.now() - runStartedAt;
     const totalTokens = results.reduce((sum, result) => sum + ('totalTokens' in result ? result.totalTokens ?? 0 : 0), 0);
+    const promptTokens = results.reduce((sum, result) => sum + ('promptTokens' in result ? result.promptTokens ?? 0 : 0), 0);
+    const completionTokens = results.reduce((sum, result) => sum + ('completionTokens' in result ? result.completionTokens ?? 0 : 0), 0);
+    const pricing = body.pricing;
+    const estimatedCost = pricing && Number.isFinite(pricing.inputPerMillion) && Number.isFinite(pricing.outputPerMillion)
+      ? (promptTokens * (pricing.inputPerMillion ?? 0) + completionTokens * (pricing.outputPerMillion ?? 0)) / 1_000_000
+      : undefined;
     const failureSummary = results.reduce<Record<string, number>>((summary, result) => {
       if (!result.passed && result.failureType) summary[result.failureType] = (summary[result.failureType] ?? 0) + 1;
       return summary;
@@ -129,7 +135,8 @@ async function runEvaluation(request: Request) {
     try {
       await db.insert(evaluationRuns).values({
         id: runId, userId: user.id, model, scope, total: results.length, passed, passRate,
-        datasetVersion: EVAL_DATASET_VERSION, promptVersion: EVAL_PROMPT_VERSION, durationMs, totalTokens, createdAt,
+        datasetVersion: EVAL_DATASET_VERSION, promptVersion: EVAL_PROMPT_VERSION, durationMs, totalTokens,
+        estimatedCostMicros: estimatedCost === undefined ? null : Math.round(estimatedCost * 1_000_000), costCurrency: pricing?.currency ?? null, createdAt,
       });
       // Each row currently binds 16 values. Five rows stay below D1's
       // per-statement variable limit and leave room for future evidence fields.
@@ -140,7 +147,7 @@ async function runEvaluation(request: Request) {
       console.error('Evaluation persistence failed', error);
       persistenceWarning = '模型评测已完成，但本轮证据未能完整保存。';
     }
-    runs.push({ runId, model, total: results.length, passed, passRate, durationMs, totalTokens, datasetVersion: EVAL_DATASET_VERSION, promptVersion: EVAL_PROMPT_VERSION, failureSummary, results, persistenceWarning });
+    runs.push({ runId, model, total: results.length, passed, passRate, durationMs, promptTokens, completionTokens, totalTokens, estimatedCost, costCurrency: pricing?.currency, datasetVersion: EVAL_DATASET_VERSION, promptVersion: EVAL_PROMPT_VERSION, failureSummary, results, persistenceWarning });
   }
 
   return Response.json({ runs, datasetSize: EVALUATION_CASES.length, selectedCases: cases.length, datasetVersion: EVAL_DATASET_VERSION, promptVersion: EVAL_PROMPT_VERSION });
@@ -162,10 +169,10 @@ export async function GET(request: Request) {
         requiredHits: JSON.parse(row.requiredHitsJson || '[]') as string[],
         forbiddenHits: JSON.parse(row.forbiddenHitsJson || '[]') as string[],
       }));
-      return Response.json({ run: { ...run, results } });
+      return Response.json({ run: { ...run, estimatedCost: run.estimatedCostMicros == null ? undefined : run.estimatedCostMicros / 1_000_000, results } });
     }
     const runs = await getDb().select().from(evaluationRuns).where(eq(evaluationRuns.userId, user.id)).orderBy(desc(evaluationRuns.createdAt)).limit(20);
-    return Response.json({ runs });
+    return Response.json({ runs: runs.map((run) => ({ ...run, estimatedCost: run.estimatedCostMicros == null ? undefined : run.estimatedCostMicros / 1_000_000 })) });
   } catch (error) {
     console.error('Evaluation history failed', error);
     return Response.json({ error: '评测历史暂时不可用。', runs: [] }, { status: 503 });

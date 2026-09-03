@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import { ArrowLeft, FlaskConical, ImagePlus, Loader2, Trash2 } from 'lucide-react';
 
 type Sample = { id: string; name: string; image: string; truthText: string };
@@ -28,7 +27,8 @@ export default function ImageEvaluationPage() {
     setRunning(true); setError(''); setResult(null);
     try {
       const cases = samples.map((sample) => ({ id: sample.id, image: sample.image, groundTruth: JSON.parse(sample.truthText) as Record<string, string | number> }));
-      const response = await fetch('/api/evaluation/image', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cases, pricing: { inputPerMillion: Number(inputPrice) || 0, outputPerMillion: Number(outputPrice) || 0, currency: 'CNY' } }) });
+      const pricing = inputPrice.trim() && outputPrice.trim() ? { inputPerMillion: Number(inputPrice), outputPerMillion: Number(outputPrice), currency: 'CNY' } : undefined;
+      const response = await fetch('/api/evaluation/image', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cases, pricing }) });
       const data = await response.json() as EvalResult & { error?: string };
       if (!response.ok) throw new Error(data.error || '图片评测失败');
       setResult(data);
@@ -37,7 +37,7 @@ export default function ImageEvaluationPage() {
   }
 
   return <main className="min-h-screen bg-[var(--grouped-background)] text-[var(--label)]"><div className="mx-auto max-w-5xl px-5 py-8 md:px-8 md:py-12">
-    <Link href="/evaluation" className="inline-flex items-center gap-2 text-sm text-[var(--secondary-label)]"><ArrowLeft className="size-4" />返回文本评测</Link>
+    <a href="/evaluation" className="inline-flex items-center gap-2 text-sm text-[var(--secondary-label)]"><ArrowLeft className="size-4" />返回文本评测</a>
     <div className="mt-7"><div className="inline-flex items-center gap-2 rounded-full bg-[var(--system-green)]/10 px-3 py-1.5 text-xs font-semibold text-[var(--system-green)]"><ImagePlus className="size-4" />Image Eval Dataset</div><h1 className="mt-4 text-3xl font-semibold tracking-tight">体脂秤截图字段级评测</h1><p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--secondary-label)]">上传脱敏截图并填写人工核对真值。系统按字段计算准确率、精确率、漏提取、错提取与多提取；图片只用于本轮模型调用，不写入 D1。</p></div>
     <section className="mt-7 rounded-3xl border border-[var(--separator)] bg-white p-5"><div className="flex flex-wrap items-center justify-between gap-3"><label className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-2xl bg-[var(--system-green)] px-4 text-sm font-semibold text-white"><ImagePlus className="size-4" />添加截图（最多 5 张）<input className="hidden" type="file" accept="image/png,image/jpeg,image/webp" multiple onChange={(event) => addFiles(event.target.files)} /></label><div className="flex gap-2"><input value={inputPrice} onChange={(event) => setInputPrice(event.target.value)} placeholder="输入 ¥/百万 Token" className="h-10 w-36 rounded-xl border border-[var(--separator)] px-3 text-xs" /><input value={outputPrice} onChange={(event) => setOutputPrice(event.target.value)} placeholder="输出 ¥/百万 Token" className="h-10 w-36 rounded-xl border border-[var(--separator)] px-3 text-xs" /></div></div>
       <div className="mt-5 grid gap-4">{samples.map((sample) => <article key={sample.id} className="grid gap-4 rounded-2xl bg-[var(--system-gray6)] p-4 md:grid-cols-[160px_1fr_auto]"><img src={sample.image} alt={sample.name} className="h-40 w-full rounded-xl object-contain bg-white" /><div><p className="mb-2 truncate text-xs font-semibold">{sample.name}</p><textarea value={sample.truthText} onChange={(event) => setSamples((old) => old.map((item) => item.id === sample.id ? { ...item, truthText: event.target.value } : item))} className="h-32 w-full rounded-xl border border-[var(--separator)] bg-white p-3 font-mono text-xs" /></div><button aria-label="删除样本" onClick={() => setSamples((old) => old.filter((item) => item.id !== sample.id))} className="self-start rounded-xl p-2 text-[var(--system-red)]"><Trash2 className="size-4" /></button></article>)}</div>
