@@ -18,6 +18,7 @@ type RunResult = typeof EVALUATION_CASES[number] & {
   completionTokens?: number;
   totalTokens?: number;
   failureType?: string;
+  manualReview?: 'approved' | 'rejected' | null;
   error?: string;
 };
 
@@ -49,7 +50,25 @@ export default function EvaluationPage() {
   const [ranAt, setRanAt] = useState('');
   const [history, setHistory] = useState<RunHistory[]>([]);
   const [manualReview, setManualReview] = useState<ManualReview>({});
+  const [caseFilter, setCaseFilter] = useState<'all' | 'failed' | 'passed' | 'unreviewed' | 'rejected'>('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const resultMap = useMemo(() => new Map(results.map((item) => [item.id, item])), [results]);
+  const visibleCases = useMemo(() => EVALUATION_CASES.filter((testCase) => {
+    if (categoryFilter !== 'all' && testCase.category !== categoryFilter) return false;
+    const result = resultMap.get(testCase.id);
+    const review = manualReview[`${activeModel}:${testCase.id}`] ?? result?.manualReview ?? undefined;
+    if (caseFilter === 'failed') return result?.passed === false;
+    if (caseFilter === 'passed') return result?.passed === true;
+    if (caseFilter === 'unreviewed') return Boolean(result) && !review;
+    if (caseFilter === 'rejected') return review === 'rejected';
+    return true;
+  }), [activeModel, caseFilter, categoryFilter, manualReview, resultMap]);
+  const reviewStats = useMemo(() => results.reduce((stats, result) => {
+    const review = manualReview[`${activeModel}:${result.id}`] ?? result.manualReview ?? undefined;
+    if (review === 'approved') stats.approved += 1;
+    if (review === 'rejected') stats.rejected += 1;
+    return stats;
+  }, { approved: 0, rejected: 0 }), [activeModel, manualReview, results]);
 
   useEffect(() => {
     try { setHistory(JSON.parse(localStorage.getItem('nourish-eval-history') || '[]')); } catch { setHistory([]); }
@@ -123,6 +142,7 @@ export default function EvaluationPage() {
       setResults(hydrated);
       setSummary({ model: selected.model, passed: selected.passed, total: selected.total, passRate: selected.passRate });
       setRanAt(historyRun.ranAt);
+      setManualReview(Object.fromEntries(hydrated.flatMap((result) => result.manualReview ? [[`${selected.model}:${result.id}`, result.manualReview]] : [])));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : '历史详情读取失败');
     }
@@ -200,8 +220,9 @@ export default function EvaluationPage() {
 
         <section className="mt-10">
           <div className="mb-4 flex items-center justify-between"><div><h2 className="text-xl font-semibold">分层评测数据集</h2><p className="mt-1 text-sm text-[var(--secondary-label)]">{EVALUATION_CASES.length} 条版本化基线：核心冒烟 + 扩展回归</p></div><ShieldCheck className="size-6 text-[var(--system-green)]" /></div>
+          {summary && <div className="mb-4 rounded-3xl border border-[var(--separator)] bg-white p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold text-[var(--secondary-label)]">人工复核覆盖</p><p className="mt-1 text-sm"><span className="font-semibold text-[var(--system-green)]">{reviewStats.approved + reviewStats.rejected}/{results.length}</span><span className="text-[var(--secondary-label)]"> 已复核 · 通过 {reviewStats.approved} · 驳回 {reviewStats.rejected}</span></p></div><div className="flex flex-wrap gap-2"><select aria-label="按结果筛选" value={caseFilter} onChange={(event) => setCaseFilter(event.target.value as typeof caseFilter)} className="h-9 rounded-xl border border-[var(--separator)] bg-white px-3 text-xs outline-none"><option value="all">全部结果</option><option value="failed">仅自动失败</option><option value="passed">仅自动通过</option><option value="unreviewed">待人工复核</option><option value="rejected">人工驳回</option></select><select aria-label="按类别筛选" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="h-9 rounded-xl border border-[var(--separator)] bg-white px-3 text-xs outline-none"><option value="all">全部类别</option>{[...new Set(EVALUATION_CASES.map((item) => item.category))].map((category) => <option key={category} value={category}>{category}</option>)}</select></div></div></div>}
           <div className="grid gap-4">
-            {EVALUATION_CASES.map((testCase) => {
+            {visibleCases.map((testCase) => {
               const result = resultMap.get(testCase.id);
               return <article key={testCase.id} className="rounded-3xl border border-[var(--separator)] bg-[var(--secondary-grouped-background)] p-5 md:p-6">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -213,6 +234,7 @@ export default function EvaluationPage() {
                 {result && <div className="mt-4 border-t border-[var(--separator)] pt-4"><div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold text-[var(--secondary-label)]">模型回答{result.durationMs != null ? ` · ${(result.durationMs / 1000).toFixed(1)} 秒` : ''}{result.totalTokens ? ` · ${result.totalTokens} tokens` : ''}</p><div className="flex gap-1"><button aria-label="人工复核通过" onClick={() => void reviewCase(testCase.id, 'approved')} className={`rounded-lg p-1.5 ${manualReview[`${activeModel}:${testCase.id}`] === 'approved' ? 'bg-[var(--system-green)] text-white' : 'bg-[var(--system-gray6)] text-[var(--secondary-label)]'}`}><ThumbsUp className="size-3.5" /></button><button aria-label="人工复核不通过" onClick={() => void reviewCase(testCase.id, 'rejected')} className={`rounded-lg p-1.5 ${manualReview[`${activeModel}:${testCase.id}`] === 'rejected' ? 'bg-[var(--system-red)] text-white' : 'bg-[var(--system-gray6)] text-[var(--secondary-label)]'}`}><ThumbsDown className="size-3.5" /></button></div></div><p className="mt-2 whitespace-pre-wrap text-sm leading-6">{result.error || result.answer}</p>{result.jsonValid === false && <p className="mt-2 text-xs text-[var(--system-red)]">结构化输出无法解析为 JSON</p>}{(result.missingJsonKeys?.length ?? 0) > 0 && <p className="mt-2 text-xs text-[var(--system-red)]">缺少顶层字段：{result.missingJsonKeys?.join('、')}</p>}{(result.missingJsonPaths?.length ?? 0) > 0 && <p className="mt-2 text-xs text-[var(--system-red)]">缺少嵌套字段：{result.missingJsonPaths?.join('、')}</p>}{result.forbiddenHits.length > 0 && <p className="mt-2 text-xs text-[var(--system-red)]">命中风险表达：{result.forbiddenHits.join('、')}</p>}</div>}
               </article>;
             })}
+            {visibleCases.length === 0 && <div className="rounded-3xl border border-dashed border-[var(--separator)] bg-white p-8 text-center text-sm text-[var(--secondary-label)]">当前筛选条件下没有用例</div>}
           </div>
         </section>
       </div>
