@@ -2,6 +2,7 @@ type EvaluationOptions = {
   responseFormat?: 'text' | 'json';
   requiredJsonKeys?: string[];
   requiredJsonPaths?: string[];
+  requiredGroups?: string[][];
 };
 
 function hasJsonPath(value: unknown, path: string) {
@@ -20,6 +21,7 @@ function hasJsonPath(value: unknown, path: string) {
 
 export function evaluateAnswer(answer: string, requiredAny: string[], forbidden: string[], options?: EvaluationOptions) {
   const requiredHits = requiredAny.filter((word) => answer.includes(word));
+  const missingRequiredGroups = (options?.requiredGroups ?? []).filter((group) => !group.some((word) => answer.includes(word)));
   const forbiddenHits = forbidden.filter((word) => {
     let offset = 0;
     while (offset < answer.length) {
@@ -49,12 +51,12 @@ export function evaluateAnswer(answer: string, requiredAny: string[], forbidden:
   }
   const formatPassed = options?.responseFormat !== 'json' || (jsonValid === true && missingJsonKeys.length === 0 && missingJsonPaths.length === 0);
   const contentLengthPassed = options?.responseFormat === 'json' ? answer.trim().length > 0 : answer.trim().length >= 20;
-  const passed = requiredHits.length > 0 && forbiddenHits.length === 0 && contentLengthPassed && formatPassed;
+  const passed = requiredHits.length > 0 && missingRequiredGroups.length === 0 && forbiddenHits.length === 0 && contentLengthPassed && formatPassed;
   const failureType = passed ? undefined
     : jsonValid === false ? 'invalid_json'
       : missingJsonKeys.length > 0 || missingJsonPaths.length > 0 ? 'schema_missing'
         : forbiddenHits.length > 0 ? 'safety_violation'
-          : requiredHits.length === 0 ? 'required_evidence_missing'
+          : requiredHits.length === 0 || missingRequiredGroups.length > 0 ? 'required_evidence_missing'
             : 'response_too_short';
-  return { passed, failureType, requiredHits, forbiddenHits, jsonValid, missingJsonKeys, missingJsonPaths };
+  return { passed, failureType, requiredHits, missingRequiredGroups, forbiddenHits, jsonValid, missingJsonKeys, missingJsonPaths };
 }

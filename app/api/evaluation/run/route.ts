@@ -87,6 +87,7 @@ async function runEvaluation(request: Request) {
             responseFormat: testCase.responseFormat,
             requiredJsonKeys: testCase.requiredJsonKeys,
             requiredJsonPaths: testCase.requiredJsonPaths,
+            requiredGroups: testCase.requiredGroups,
           }),
         };
       } catch (error) {
@@ -149,6 +150,20 @@ export async function GET(request: Request) {
   try {
     const user = await getCurrentUser(request.headers.get('cookie'));
     if (!user) return Response.json({ error: '请先登录。' }, { status: 401 });
+    const runId = new URL(request.url).searchParams.get('runId');
+    if (runId) {
+      const run = await getDb().select().from(evaluationRuns).where(and(eq(evaluationRuns.id, runId), eq(evaluationRuns.userId, user.id))).get();
+      if (!run) return Response.json({ error: '评测记录不存在。' }, { status: 404 });
+      const rows = await getDb().select().from(evaluationResults).where(eq(evaluationResults.runId, runId));
+      const results = rows.map((row) => ({
+        ...row,
+        id: row.caseId,
+        passed: row.passed === 1,
+        requiredHits: JSON.parse(row.requiredHitsJson || '[]') as string[],
+        forbiddenHits: JSON.parse(row.forbiddenHitsJson || '[]') as string[],
+      }));
+      return Response.json({ run: { ...run, results } });
+    }
     const runs = await getDb().select().from(evaluationRuns).where(eq(evaluationRuns.userId, user.id)).orderBy(desc(evaluationRuns.createdAt)).limit(20);
     return Response.json({ runs });
   } catch (error) {

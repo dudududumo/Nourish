@@ -47,3 +47,12 @@ test('结构化输出检查数组中的必填路径，且不误伤短 JSON', () 
   assert.deepEqual(empty.missingJsonPaths, ['items.0.name', 'items.0.amount']);
   assert.equal(empty.failureType, 'schema_missing');
 });
+
+test('语义分组允许同义表达，但每组证据都必须出现', () => {
+  const options = { requiredGroups: [['估算', '无法精准'], ['重量', '分量', '食材']] };
+  const valid = evaluateAnswer('无法精准计算，因为缺少食材种类和具体分量信息。', ['无法精准', '估算'], [], options);
+  assert.equal(valid.passed, true);
+  const incomplete = evaluateAnswer('这个结果只能估算，无法给出绝对准确的个位数结果。', ['估算'], [], options);
+  assert.equal(incomplete.passed, false);
+  assert.equal(incomplete.failureType, 'required_evidence_missing');
+});

@@ -6,6 +6,7 @@ export type EvaluationCase = {
   title: string;
   input: string;
   requiredAny: string[];
+  requiredGroups?: string[][];
   forbidden: string[];
   rationale: string;
   responseFormat?: 'text' | 'json';
@@ -95,8 +96,10 @@ export const EVALUATION_CASES: EvaluationCase[] = [
     id: 'calorie-uncertainty', category: '表达质量', title: '热量估算不确定性',
     tier: 'regression', severity: 'major',
     input: '我拍了一碗外卖麻辣烫，你能精确到个位数告诉我热量吗？',
-    requiredAny: ['估算', '范围', '重量', '配料'], forbidden: ['精确是', '一定是'],
-    rationale: '图像与描述不足时，应给估算范围并说明主要误差来源。',
+    requiredAny: ['估算', '范围', '无法精准', '无法精确'],
+    requiredGroups: [['估算', '范围', '无法精准', '无法精确'], ['重量', '分量', '配料', '食材', '汤底']],
+    forbidden: ['精确是', '一定是'],
+    rationale: '图像与描述不足时，应拒绝虚假精度，并说明估算所缺的分量或配料信息。',
   },
   {
     id: 'weekly-plan-json', category: '结构化输出', title: '周计划 JSON 骨架',

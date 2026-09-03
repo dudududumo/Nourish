@@ -29,7 +29,7 @@ type EvaluationResponse = {
   error?: string;
 };
 
-type RunHistory = { model: string; passed: number; total: number; passRate: number; ranAt: string; durationMs?: number | null; totalTokens?: number | null; promptVersion?: string | null };
+type RunHistory = { id?: string; model: string; passed: number; total: number; passRate: number; ranAt: string; durationMs?: number | null; totalTokens?: number | null; promptVersion?: string | null };
 type ManualReview = Record<string, 'approved' | 'rejected'>;
 const FAILURE_LABELS: Record<string, string> = {
   infrastructure_error: '服务异常', invalid_json: 'JSON 无效', schema_missing: '字段缺失',
@@ -57,11 +57,11 @@ export default function EvaluationPage() {
       .then(async (response) => {
         const text = await response.text();
         if (!response.ok || !text.trim()) return null;
-        return JSON.parse(text) as { runs?: Array<{ model: string; passed: number; total: number; passRate: number; createdAt: string; durationMs?: number | null; totalTokens?: number | null; promptVersion?: string | null }> };
+        return JSON.parse(text) as { runs?: Array<{ id: string; model: string; passed: number; total: number; passRate: number; createdAt: string; durationMs?: number | null; totalTokens?: number | null; promptVersion?: string | null }> };
       })
       .then((data) => {
         if (!data?.runs?.length) return;
-        setHistory(data.runs.slice(0, 5).map((run) => ({ model: run.model, passed: run.passed, total: run.total, passRate: run.passRate, ranAt: run.createdAt, durationMs: run.durationMs, totalTokens: run.totalTokens, promptVersion: run.promptVersion })));
+        setHistory(data.runs.slice(0, 5).map((run) => ({ id: run.id, model: run.model, passed: run.passed, total: run.total, passRate: run.passRate, ranAt: run.createdAt, durationMs: run.durationMs, totalTokens: run.totalTokens, promptVersion: run.promptVersion })));
       })
       .catch(() => undefined);
   }, []);
@@ -106,6 +106,26 @@ export default function EvaluationPage() {
     setActiveModel(run.model);
     setResults(run.results);
     setSummary({ model: run.model, passed: run.passed, total: run.total, passRate: run.passRate });
+  }
+
+  async function loadHistoricalRun(historyRun: RunHistory) {
+    if (!historyRun.id) return;
+    setError('');
+    try {
+      const response = await fetch(`/api/evaluation/run?runId=${encodeURIComponent(historyRun.id)}`, { headers: { accept: 'application/json' } });
+      const data = await response.json() as { run?: ModelRun; error?: string };
+      if (!response.ok || !data.run) throw new Error(data.error || '历史详情读取失败');
+      const caseMap = new Map(EVALUATION_CASES.map((item) => [item.id, item]));
+      const hydrated = data.run.results.map((result) => ({ ...caseMap.get(result.id), ...result })) as RunResult[];
+      const selected = { ...data.run, results: hydrated };
+      setRuns([selected]);
+      setActiveModel(selected.model);
+      setResults(hydrated);
+      setSummary({ model: selected.model, passed: selected.passed, total: selected.total, passRate: selected.passRate });
+      setRanAt(historyRun.ranAt);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '历史详情读取失败');
+    }
   }
 
   async function reviewCase(caseId: string, review: 'approved' | 'rejected') {
@@ -175,7 +195,7 @@ export default function EvaluationPage() {
 
         {history.length > 0 && <section className="mt-8 rounded-3xl border border-[var(--separator)] bg-white p-5 md:p-6">
           <div className="flex items-center gap-2"><History className="size-5 text-[var(--system-green)]" /><h2 className="font-semibold">最近模型运行</h2></div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">{history.map((run, index) => { const previous = history.slice(index + 1).find((item) => item.model === run.model && item.total === run.total); const delta = previous ? run.passRate - previous.passRate : null; return <div key={`${run.ranAt}-${run.model}`} className="rounded-2xl bg-[var(--system-gray6)] p-3"><p className="truncate text-xs text-[var(--secondary-label)]">{run.model}</p><div className="mt-1 flex items-baseline gap-1.5"><p className="text-xl font-semibold text-[var(--system-green)]">{run.passRate}%</p>{delta !== null && <span className={`text-[11px] font-semibold ${delta >= 0 ? 'text-[var(--system-green)]' : 'text-[var(--system-red)]'}`}>{delta >= 0 ? '+' : ''}{delta}pp</span>}</div><p className="mt-1 text-[11px] text-[var(--tertiary-label)]">{run.durationMs ? `${(run.durationMs / 1000).toFixed(1)}s · ` : ''}{run.totalTokens ? `${run.totalTokens.toLocaleString()} tokens` : run.promptVersion ?? '历史基线'}</p><p className="mt-1 text-[11px] text-[var(--tertiary-label)]">{new Date(run.ranAt).toLocaleString('zh-CN')}</p></div>; })}</div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">{history.map((run, index) => { const previous = history.slice(index + 1).find((item) => item.model === run.model && item.total === run.total); const delta = previous ? run.passRate - previous.passRate : null; return <button type="button" onClick={() => void loadHistoricalRun(run)} disabled={!run.id} key={`${run.ranAt}-${run.model}`} className="rounded-2xl bg-[var(--system-gray6)] p-3 text-left transition-colors hover:bg-[#F0FDF4] disabled:cursor-default"><p className="truncate text-xs text-[var(--secondary-label)]">{run.model}</p><div className="mt-1 flex items-baseline gap-1.5"><p className="text-xl font-semibold text-[var(--system-green)]">{run.passRate}%</p>{delta !== null && <span className={`text-[11px] font-semibold ${delta >= 0 ? 'text-[var(--system-green)]' : 'text-[var(--system-red)]'}`}>{delta >= 0 ? '+' : ''}{delta}pp</span>}</div><p className="mt-1 text-[11px] text-[var(--tertiary-label)]">{run.durationMs ? `${(run.durationMs / 1000).toFixed(1)}s · ` : ''}{run.totalTokens ? `${run.totalTokens.toLocaleString()} tokens` : run.promptVersion ?? '历史基线'}</p><p className="mt-1 text-[11px] text-[var(--tertiary-label)]">{new Date(run.ranAt).toLocaleString('zh-CN')}</p></button>; })}</div>
         </section>}
 
         <section className="mt-10">
