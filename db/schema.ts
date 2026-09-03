@@ -75,11 +75,20 @@ export const evaluationResults = sqliteTable('evaluation_results', {
   requiredHitsJson: text('required_hits_json').notNull().default('[]'),
   forbiddenHitsJson: text('forbidden_hits_json').notNull().default('[]'),
   error: text('error'),
+  manualReview: text('manual_review'),
+  reviewedAt: text('reviewed_at'),
   createdAt: text('created_at').notNull(),
 }, (table) => [
   index('idx_evaluation_results_run').on(table.runId),
   index('idx_evaluation_results_case').on(table.caseId),
 ]);
+
+export const rateLimits = sqliteTable('rate_limits', {
+  key: text('key').primaryKey(),
+  windowStart: integer('window_start').notNull(),
+  count: integer('count').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
 
 /* ===== Weekly Meal Plan (structured) ===== */
 

@@ -10,6 +10,8 @@ type RunResult = typeof EVALUATION_CASES[number] & {
   passed: boolean;
   requiredHits: string[];
   forbiddenHits: string[];
+  jsonValid?: boolean;
+  missingJsonKeys?: string[];
   error?: string;
 };
 
@@ -96,6 +98,23 @@ export default function EvaluationPage() {
     setSummary({ model: run.model, passed: run.passed, total: run.total, passRate: run.passRate });
   }
 
+  async function reviewCase(caseId: string, review: 'approved' | 'rejected') {
+    const run = runs.find((item) => item.model === activeModel);
+    const key = `${activeModel}:${caseId}`;
+    setManualReview((old) => ({ ...old, [key]: review }));
+    if (!run?.runId) return;
+    try {
+      const response = await fetch('/api/evaluation/run', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({ runId: run.runId, caseId, review }),
+      });
+      if (!response.ok) throw new Error('save failed');
+    } catch {
+      setError('人工复核已保留在当前导出中，但云端保存失败，请稍后重试。');
+    }
+  }
+
   function exportEvidence() {
     if (!summary) return;
     const payload = { project: 'Nourish Eval Lab', ranAt, runScope: completedScope, scoring: 'deterministic-rules-with-human-review', manualReview, runs };
@@ -159,7 +178,7 @@ export default function EvaluationPage() {
                 </div>
                 <p className="mt-4 rounded-2xl bg-[var(--system-gray6)] p-4 text-sm leading-6">“{testCase.input}”</p>
                 <p className="mt-3 text-xs leading-5 text-[var(--secondary-label)]">评测依据：{testCase.rationale}</p>
-                {result && <div className="mt-4 border-t border-[var(--separator)] pt-4"><div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold text-[var(--secondary-label)]">模型回答</p><div className="flex gap-1"><button aria-label="人工复核通过" onClick={() => setManualReview((old) => ({ ...old, [testCase.id]: 'approved' }))} className={`rounded-lg p-1.5 ${manualReview[testCase.id] === 'approved' ? 'bg-[var(--system-green)] text-white' : 'bg-[var(--system-gray6)] text-[var(--secondary-label)]'}`}><ThumbsUp className="size-3.5" /></button><button aria-label="人工复核不通过" onClick={() => setManualReview((old) => ({ ...old, [testCase.id]: 'rejected' }))} className={`rounded-lg p-1.5 ${manualReview[testCase.id] === 'rejected' ? 'bg-[var(--system-red)] text-white' : 'bg-[var(--system-gray6)] text-[var(--secondary-label)]'}`}><ThumbsDown className="size-3.5" /></button></div></div><p className="mt-2 whitespace-pre-wrap text-sm leading-6">{result.error || result.answer}</p>{result.forbiddenHits.length > 0 && <p className="mt-2 text-xs text-[var(--system-red)]">命中风险表达：{result.forbiddenHits.join('、')}</p>}</div>}
+                {result && <div className="mt-4 border-t border-[var(--separator)] pt-4"><div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold text-[var(--secondary-label)]">模型回答</p><div className="flex gap-1"><button aria-label="人工复核通过" onClick={() => void reviewCase(testCase.id, 'approved')} className={`rounded-lg p-1.5 ${manualReview[`${activeModel}:${testCase.id}`] === 'approved' ? 'bg-[var(--system-green)] text-white' : 'bg-[var(--system-gray6)] text-[var(--secondary-label)]'}`}><ThumbsUp className="size-3.5" /></button><button aria-label="人工复核不通过" onClick={() => void reviewCase(testCase.id, 'rejected')} className={`rounded-lg p-1.5 ${manualReview[`${activeModel}:${testCase.id}`] === 'rejected' ? 'bg-[var(--system-red)] text-white' : 'bg-[var(--system-gray6)] text-[var(--secondary-label)]'}`}><ThumbsDown className="size-3.5" /></button></div></div><p className="mt-2 whitespace-pre-wrap text-sm leading-6">{result.error || result.answer}</p>{result.jsonValid === false && <p className="mt-2 text-xs text-[var(--system-red)]">结构化输出无法解析为 JSON</p>}{(result.missingJsonKeys?.length ?? 0) > 0 && <p className="mt-2 text-xs text-[var(--system-red)]">缺少字段：{result.missingJsonKeys?.join('、')}</p>}{result.forbiddenHits.length > 0 && <p className="mt-2 text-xs text-[var(--system-red)]">命中风险表达：{result.forbiddenHits.join('、')}</p>}</div>}
               </article>;
             })}
           </div>

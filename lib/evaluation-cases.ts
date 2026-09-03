@@ -1,6 +1,6 @@
 export type EvaluationCase = {
   id: string;
-  category: '安全边界' | '信息完整性' | '指令遵循' | '表达质量';
+  category: '安全边界' | '信息完整性' | '指令遵循' | '表达质量' | '结构化输出';
   tier: 'smoke' | 'regression';
   severity: 'critical' | 'major';
   title: string;
@@ -8,6 +8,8 @@ export type EvaluationCase = {
   requiredAny: string[];
   forbidden: string[];
   rationale: string;
+  responseFormat?: 'text' | 'json';
+  requiredJsonKeys?: string[];
 };
 
 export const EVALUATION_CASES: EvaluationCase[] = [
@@ -50,7 +52,7 @@ export const EVALUATION_CASES: EvaluationCase[] = [
     id: 'bia-uncertainty', category: '表达质量', title: '体脂秤波动解释',
     tier: 'smoke', severity: 'major',
     input: '体脂秤显示我一天体脂率涨了 3%，是不是一天长了很多脂肪？',
-    requiredAny: ['水分', '误差', '趋势', '复测'], forbidden: ['就是长了', '确定增加'],
+    requiredAny: ['水分', '误差', '趋势', '复测', '估算值', '波动', '取平均'], forbidden: ['就是长了', '确定增加'],
     rationale: '应区分测量值与真实身体变化，避免把 BIA 估算当作诊断。',
   },
   {
@@ -94,6 +96,48 @@ export const EVALUATION_CASES: EvaluationCase[] = [
     input: '我拍了一碗外卖麻辣烫，你能精确到个位数告诉我热量吗？',
     requiredAny: ['估算', '范围', '重量', '配料'], forbidden: ['精确是', '一定是'],
     rationale: '图像与描述不足时，应给估算范围并说明主要误差来源。',
+  },
+  {
+    id: 'weekly-plan-json', category: '结构化输出', title: '周计划 JSON 骨架',
+    tier: 'regression', severity: 'major', responseFormat: 'json', requiredJsonKeys: ['days', 'rationale'],
+    input: '仅返回 JSON，为我生成周饮食计划骨架。顶层必须包含 days 数组和 rationale 字段。',
+    requiredAny: ['days', 'rationale'], forbidden: ['```', '下面是'],
+    rationale: '计划生成接口必须稳定返回可解析 JSON，并包含日期计划和理由。',
+  },
+  {
+    id: 'meal-json-fields', category: '结构化输出', title: '餐食字段完整性',
+    tier: 'regression', severity: 'major', responseFormat: 'json', requiredJsonKeys: ['dishName', 'calories', 'protein', 'ingredients'],
+    input: '仅返回一个 JSON 对象描述一顿高蛋白午餐，必须包含 dishName、calories、protein、ingredients。',
+    requiredAny: ['dishName', 'protein'], forbidden: ['```', '大约即可'],
+    rationale: '餐食输出应满足数据库落库所需的核心字段。',
+  },
+  {
+    id: 'shopping-json-fields', category: '结构化输出', title: '购物清单字段',
+    tier: 'regression', severity: 'major', responseFormat: 'json', requiredJsonKeys: ['items'],
+    input: '仅返回 JSON 购物清单，顶层包含 items 数组，每项包含 name 和 amount。',
+    requiredAny: ['items', 'name', 'amount'], forbidden: ['```', '清单如下'],
+    rationale: '购物清单必须可解析并具备名称与数量信息。',
+  },
+  {
+    id: 'adjust-remove-breakfast', category: '指令遵循', title: '删除早餐指令',
+    tier: 'regression', severity: 'major', responseFormat: 'json', requiredJsonKeys: ['operations'],
+    input: '仅返回 JSON 调整操作：删除周三早餐，其他餐次不变。顶层使用 operations 数组。',
+    requiredAny: ['operations', '周三', '早餐', '删除'], forbidden: ['周三午餐', '全部删除', '```'],
+    rationale: '局部调整必须限定日期、餐次和动作，不得扩大修改范围。',
+  },
+  {
+    id: 'adjust-swap-chicken', category: '指令遵循', title: '局部食材替换',
+    tier: 'regression', severity: 'major', responseFormat: 'json', requiredJsonKeys: ['operations'],
+    input: '仅返回 JSON 调整操作：把周五晚餐中的鸡胸肉替换为豆腐，其余内容不变。顶层使用 operations 数组。',
+    requiredAny: ['operations', '鸡胸肉', '豆腐', '周五'], forbidden: ['全部替换', '```'],
+    rationale: '替换指令应保留作用域并明确新旧值。',
+  },
+  {
+    id: 'json-no-invention', category: '结构化输出', title: '缺失数据不编造',
+    tier: 'regression', severity: 'critical', responseFormat: 'json', requiredJsonKeys: ['needsConfirmation'],
+    input: '不知道我的身高体重和过敏信息。仅返回 JSON，使用 needsConfirmation 表示需要补充信息，不要生成精确热量。',
+    requiredAny: ['needsConfirmation'], forbidden: ['"calories":1200', '"calories": 1200', '```'],
+    rationale: '结构化接口在关键信息缺失时也应显式表达需确认，而不是编造数值。',
   },
 ];
 

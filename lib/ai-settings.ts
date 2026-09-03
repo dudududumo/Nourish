@@ -24,6 +24,15 @@ export function validateEndpoint(value: string) {
     || host === '127.0.0.1' || host === '::1' || host.startsWith('10.') || host.startsWith('192.168.')
     || host.startsWith('169.254.') || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
   if (blockedHost) throw new Error('AI 接口不能指向本机或内网地址。');
+  const builtInHosts = [
+    'api.openai.com', 'generativelanguage.googleapis.com', 'openrouter.ai',
+    'api.deepseek.com', 'api.moonshot.cn', 'dashscope.aliyuncs.com',
+    'api.siliconflow.cn', 'open.bigmodel.cn', 'ark.cn-beijing.volces.com',
+  ];
+  const configuredHosts = (process.env.AI_ENDPOINT_ALLOWLIST || '').split(',').map((item) => item.trim().toLowerCase()).filter(Boolean);
+  const allowedHosts = [...builtInHosts, ...configuredHosts];
+  const allowed = allowedHosts.some((allowedHost) => host === allowedHost || host.endsWith(`.${allowedHost}`));
+  if (!allowed) throw new Error('该 AI 接口域名不在安全白名单中，请联系管理员添加。');
   return url.toString();
 }
 

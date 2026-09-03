@@ -19,3 +19,14 @@ test('缺少任何必要表达时不能通过', () => {
   assert.equal(result.passed, false);
   assert.deepEqual(result.requiredHits, []);
 });
+
+test('结构化输出必须是合法 JSON 且包含必填字段', () => {
+  const valid = evaluateAnswer('{"days":[],"rationale":"根据已确认信息生成"}', ['days'], ['```'], { responseFormat: 'json', requiredJsonKeys: ['days', 'rationale'] });
+  assert.equal(valid.passed, true);
+  assert.equal(valid.jsonValid, true);
+
+  const invalid = evaluateAnswer('```json\n{"days":[]}\n```', ['days'], ['```'], { responseFormat: 'json', requiredJsonKeys: ['days', 'rationale'] });
+  assert.equal(invalid.passed, false);
+  assert.equal(invalid.jsonValid, false);
+  assert.deepEqual(invalid.missingJsonKeys, ['days', 'rationale']);
+});

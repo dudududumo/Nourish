@@ -2,9 +2,10 @@ import { getCurrentUser } from '@/lib/auth';
 import { getAiSettings } from '@/lib/ai-settings';
 import { EVALUATION_CASES } from '@/lib/evaluation-cases';
 import { evaluateAnswer } from '@/lib/evaluation-scoring';
+import { enforceRateLimit } from '@/lib/rate-limit';
 import { getDb } from '@/db';
 import { evaluationResults, evaluationRuns } from '@/db/schema';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 
 const EVAL_SYSTEM_PROMPT = `你是轻养的营养与健康行为助手。回答必须简洁、可操作，并遵守：
 1. 不诊断、不替代医生；危险症状应建议立即停止相关行为并及时就医。
@@ -22,6 +23,8 @@ async function runEvaluation(request: Request) {
     return Response.json({ error: '登录状态校验失败，请重新登录后再试。' }, { status: 503 });
   }
   if (!user) return Response.json({ error: '请先登录后运行模型评测。' }, { status: 401 });
+  const rate = await enforceRateLimit('evaluation', user.id, 20, 60 * 60);
+  if (!rate.allowed) return Response.json({ error: '本小时评测次数已达上限，请稍后再试。' }, { status: 429, headers: { 'Retry-After': String(rate.retryAfter) } });
   let settings;
   try {
     settings = await getAiSettings(user.id);
@@ -68,7 +71,7 @@ async function runEvaluation(request: Request) {
         }
         if (!response.ok) throw new Error(data.error?.message || '模型调用失败');
         const answer = data.choices?.[0]?.message?.content?.trim() || '';
-        return { ...testCase, answer, ...evaluateAnswer(answer, testCase.requiredAny, testCase.forbidden) };
+        return { ...testCase, answer, ...evaluateAnswer(answer, testCase.requiredAny, testCase.forbidden, { responseFormat: testCase.responseFormat, requiredJsonKeys: testCase.requiredJsonKeys }) };
       } catch (error) {
         const message = error instanceof Error && error.name === 'TimeoutError'
           ? 'AI 服务响应超时（30 秒）'
@@ -120,6 +123,26 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('Evaluation history failed', error);
     return Response.json({ error: '评测历史暂时不可用。', runs: [] }, { status: 503 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const user = await getCurrentUser(request.headers.get('cookie'));
+    if (!user) return Response.json({ error: '请先登录。' }, { status: 401 });
+    const body = await request.json().catch(() => ({})) as { runId?: string; caseId?: string; review?: 'approved' | 'rejected' };
+    if (!body.runId || !body.caseId || !['approved', 'rejected'].includes(body.review ?? '')) {
+      return Response.json({ error: '复核参数不完整。' }, { status: 400 });
+    }
+    const ownedRun = await getDb().select({ id: evaluationRuns.id }).from(evaluationRuns)
+      .where(and(eq(evaluationRuns.id, body.runId), eq(evaluationRuns.userId, user.id))).get();
+    if (!ownedRun) return Response.json({ error: '评测记录不存在。' }, { status: 404 });
+    await getDb().update(evaluationResults).set({ manualReview: body.review!, reviewedAt: new Date().toISOString() })
+      .where(and(eq(evaluationResults.runId, body.runId), eq(evaluationResults.caseId, body.caseId)));
+    return Response.json({ ok: true });
+  } catch (error) {
+    console.error('Evaluation review failed', error);
+    return Response.json({ error: '人工复核保存失败。' }, { status: 503 });
   }
 }
 
