@@ -24,6 +24,20 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="zh-CN" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: `
+          (function () {
+            var release = '2026-09-04.1';
+            var key = 'nourish-release';
+            var previous = localStorage.getItem(key);
+            if (previous && previous !== release) {
+              localStorage.setItem(key, release);
+              if ('caches' in window) caches.keys().then(function (keys) { return Promise.all(keys.map(function (name) { return caches.delete(name); })); });
+              var url = new URL(location.href);
+              url.searchParams.set('_release', release);
+              location.replace(url.toString());
+              return;
+            }
+            localStorage.setItem(key, release);
+          })();
           if ('serviceWorker' in navigator) {
             navigator.serviceWorker.getRegistrations().then(function (registrations) {
               registrations.forEach(function (registration) { registration.unregister(); });
@@ -31,8 +45,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           }
           if ('caches' in window) {
             caches.keys().then(function (keys) {
-              keys.filter(function (key) { return key.indexOf('nourish-') === 0; })
-                .forEach(function (key) { caches.delete(key); });
+              keys.forEach(function (key) { caches.delete(key); });
             });
           }
         ` }} />

@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Activity, AlertCircle, ChevronRight, ImageIcon, Loader2, Sparkles, TrendingDown, Upload } from 'lucide-react';
+import { AlertCircle, Bot, ChevronDown, ImageIcon, Info, Loader2, Sparkles, Upload, Zap } from 'lucide-react';
 import { MetricCard, MiniStat, SectionTitle, Sheet } from './shared-components';
-import { STANDARDS, fmtDateTime, locateZone, metrics, zoneNote } from './body-standards';
+import { STANDARDS, fmtDateTime, locateZone, metrics, resolveZones, zoneNote } from './body-standards';
 import type { Insight } from './types';
 
 export function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResult, historyInsights, onInsightRead, onInsightAction, onBodySaved, sex }: {
@@ -451,4 +451,3 @@ export function BodyView({ onGenerate, onAgentAnalyze, agentAnalyzing, agentResu
     </div>
   );
 }
-

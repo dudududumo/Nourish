@@ -1,8 +1,9 @@
 'use client';
 
-import { AlertCircle, CalendarRange, ChevronDown, ChevronRight, Loader2, Settings, ShoppingCart, Sparkles } from 'lucide-react';
+import { useMemo } from 'react';
+import { AlertCircle, CalendarRange, Loader2, Settings, ShoppingCart, Sparkles, Zap } from 'lucide-react';
 import { SectionTitle } from './shared-components';
-import type { TodayData } from './types';
+import type { Dish, TodayData } from './types';
 
 export function PlanView({
   todayData, weeklyData, weeklyLoading, generating, error, selectedDay, setSelectedDay,
@@ -309,4 +310,3 @@ export function PlanView({
     </div>
   );
 }
-

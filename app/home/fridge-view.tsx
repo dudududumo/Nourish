@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { AlertCircle, Archive, ChevronRight, Loader2, Plus, Refrigerator, Settings, Sparkles } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { AlertCircle, Archive, Bot, ChevronDown, ChevronRight, Info, Loader2, Plus, Refrigerator, Settings, Sparkles, Zap } from 'lucide-react';
 import { SectionTitle, Sheet } from './shared-components';
 import type { Insight, Zone } from './types';
 
@@ -275,4 +275,3 @@ export function FridgeView({
     </div>
   );
 }
-

@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ArrowRight, BookOpen, Check, Flame, Loader2, Moon, Pause, Play, Target, Timer, Trophy, User, Zap } from 'lucide-react';
+import { AlertCircle, ArrowRight, BookOpen, Check, Flame, Info, Loader2, Moon, Pause, Play, Settings, Sparkles, Target, Timer, Trophy, User, Zap } from 'lucide-react';
 import { FASTING_STAGES, GOAL_LABELS, EXPERIENCE_LABELS, planLabel } from '@/lib/fasting';
+import { todayStr } from '@/lib/utils';
 import { Sheet } from './shared-components';
 import type { FastingData } from './types';
 
@@ -549,4 +550,3 @@ export function FastingView({
     </div>
   );
 }
-

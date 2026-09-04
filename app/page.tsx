@@ -932,6 +932,7 @@ export default function HomePage() {
         <div className="max-w-2xl mx-auto flex justify-around items-center h-[49px]">
           {tabItems.map(([id, label, Icon]) => (
             <button
+              type="button"
               key={id}
               onClick={() => setTab(id)}
               className={`ios-tab-item press-effect flex-1 max-w-[80px] ${tab === id ? 'active' : ''}`}

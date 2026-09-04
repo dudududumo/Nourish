@@ -158,7 +158,7 @@ export const STANDARDS: Record<string, MetricStandard> = {
   '身体年龄': { guide: '设备根据身体成分估算的生理年龄，低于实际年龄通常代表代谢状态更好。' },
 };
 
-function resolveZones(std: MetricStandard | undefined, sex: string | null | undefined): ZoneDef[] | null {
+export function resolveZones(std: MetricStandard | undefined, sex: string | null | undefined): ZoneDef[] | null {
   if (!std) return null;
   const zones = (sex === 'female' ? std.female : sex === 'male' ? std.male : null) ?? std.zones;
   return zones && zones.length ? zones : null;
@@ -191,4 +191,3 @@ export function fmtDateTime(iso: string | null | undefined): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
-
