@@ -1,17 +1,14 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Home, CalendarRange, Refrigerator, Activity, ChevronRight,
-  Sparkles, TrendingDown, Dumbbell, Archive,
-  Flame, Info, Settings, Send, Plus,
-  LogOut, User, Loader2, AlertCircle, Check,
-  Bell, ChevronDown, ShoppingCart, Zap, Bot, Upload, ImageIcon, Minus,
-  Timer, BookOpen, Pause, Play, ArrowRight, Trophy, Target, Moon,
+  Sparkles, Info, Plus, LogOut, User, Loader2, AlertCircle,
+  ShoppingCart, Bot, Minus, Timer,
 } from 'lucide-react';
 import { todayStr } from '@/lib/utils';
-import { MetricCard, MiniStat, SectionTitle, Sheet } from '@/app/home/shared-components';
+import { Sheet } from '@/app/home/shared-components';
 import { TodayView } from '@/app/home/today-view';
 import { FastingView } from '@/app/home/fasting-view';
 import { PlanView } from '@/app/home/plan-view';
@@ -19,7 +16,7 @@ import { CoachChatView } from '@/app/home/coach-chat-view';
 import { FridgeView } from '@/app/home/fridge-view';
 import { metrics } from '@/app/home/body-standards';
 import { BodyView } from '@/app/home/body-view';
-import type { AdjustPreview, AuthUser, ChatMessage, Dish, FastingData, Insight, ShoppingItem, Tab, TodayData, WeeklyPlan, Zone } from '@/app/home/types';
+import type { AdjustPreview, AuthUser, ChatMessage, FastingData, Insight, ShoppingItem, Tab, TodayData, Zone } from '@/app/home/types';
 
 const initialZones: Zone[] = [
   { id: 'fridge', name: '冷藏', type: '冷藏', capacity: 50, used: 0, icon: '🧊' },
@@ -63,7 +60,6 @@ export default function HomePage() {
   const [selectedDay, setSelectedDay] = useState(0); // 窗口 index 0 = 今天
   const [weeklyData, setWeeklyData] = useState<any>(null);
   const [weeklyLoading, setWeeklyLoading] = useState(false);
-  const [planOpen, setPlanOpen] = useState(false);
   const [shoppingOpen, setShoppingOpen] = useState(false);
   const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>([]);
   const [shoppingLoading, setShoppingLoading] = useState(false);

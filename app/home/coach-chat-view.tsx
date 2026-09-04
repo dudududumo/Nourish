@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type KeyboardEvent } from 'react';
+import { useState } from 'react';
 import { Bot, ChevronDown, Send, Settings, Sparkles, Zap } from 'lucide-react';
 import { Sheet } from './shared-components';
 import type { ChatMessage } from './types';

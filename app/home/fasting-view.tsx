@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AlertCircle, ArrowRight, BookOpen, Check, Flame, Info, Loader2, Moon, Pause, Play, Settings, Sparkles, Target, Timer, Trophy, User, Zap } from 'lucide-react';
+import { AlertCircle, ArrowRight, BookOpen, Check, Info, Pause, Play, Settings, Sparkles, Target, Timer, Trophy } from 'lucide-react';
 import { FASTING_STAGES, GOAL_LABELS, EXPERIENCE_LABELS, planLabel } from '@/lib/fasting';
 import { todayStr } from '@/lib/utils';
 import { Sheet } from './shared-components';
@@ -170,7 +170,7 @@ function FastingOnboarding({ profile, goal, experience, onSubmit }: {
       <div>
         <p className="text-[13px] font-medium text-[var(--label)] mb-1">健康筛查 <span className="text-[11px] text-[var(--tertiary-label)]">（存在以下情况将自动调整或禁用断食）</span></p>
         <div className="space-y-2 mt-2">
-          {screens.map(([key, label, severe]) => (
+          {screens.map(([key, label]) => (
             <button key={key} onClick={() => setScreen((p) => ({ ...p, [key]: !p[key] }))}
               className={`w-full flex items-center justify-between py-2.5 px-3 rounded-xl text-[14px] press-effect border ${screen[key] ? 'border-[var(--system-red)] bg-[var(--system-red)]/8' : 'border-[var(--separator)]'}`}>
               <span className={screen[key] ? 'text-[var(--system-red)] font-medium' : 'text-[var(--secondary-label)]'}>{label}</span>
