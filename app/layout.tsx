@@ -25,7 +25,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <head>
         <script dangerouslySetInnerHTML={{ __html: `
           (function () {
-            var release = '2026-09-04.1';
+            var release = '2026-09-04.2';
             var key = 'nourish-release';
             var previous = localStorage.getItem(key);
             if (previous && previous !== release) {
